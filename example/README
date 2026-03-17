@@ -1,6 +1,6 @@
 Exaample - README
 
-The execution of run.sh begins with an L1–L2 inversion using alpha = 0.9 and log10 lambda = 0.25:
+The execution of run.sh begins with an L1–L2 inversion using alpha=0.9 and log10 lambda=-0.25:
 
 ../bin/l1l2inv -f input_mag.in -l -0.25 -a 0.9 -s settings.par -v
 
