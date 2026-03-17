@@ -1,0 +1,13 @@
+Exaample - README
+
+The execution of run.sh begins with an L1–L2 inversion using alpha = 0.9 and log10 lambda = 0.25:
+
+../bin/l1l2inv -f input_mag.in -l -0.25 -a 0.9 -s settings.par -v
+
+The resulting model, beta_L1L2.vec, is then used as a guide for the subsequent AdaL1TV inversion:
+
+../bin/l1tvinv -f input_mag.in -l 0.0 -g beta_L1L2.vec:0.5623:0.1:0.1 -c 0.125 -s settings.par -v
+
+This process generates the file model.data.
+
+The notebook EW_cross_section.ipynb visualizes the east–west cross-section at x=0km.
