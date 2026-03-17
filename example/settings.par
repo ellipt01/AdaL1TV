@@ -1,30 +1,39 @@
-# parameter settings
-# ***FORMAT***
-# identifier(1-6). explanations:	VALUES, VALUES,...
-#
+# Parameter Settings
+
+# *** FORMAT ***
+# Identifier (1-6). Description: VALUES, ...
+# NOTE: The prefix "Identifier(1-6). Description:" is parsed as a fixed string
+# and must not be modified.
+
+# The program first searches for the identifier (1-6), then finds the colon (":"),
+# and reads the values that follow skipping spaces and tabs.
+
 # *** DESCRIPTION ***
-# 1. number of grid cells: nx, ny, nz
-# 2. area of analysis: xleft, xright, yleft, yright, ztop, zbottom (km)
-# 3. magnetic inclination and declination (degree): inc, dec
-# 4. penaltyn parameter: mu
-# 5. penaltyn parameter nu and bound constraint: nu, lower, upper
-# 6. inversion parameters: tolerance, num of maxiter
+# 1. Number of grid cells: nx, ny, nz
+# 2. Analysis domain limits (km): west, east, south, north, top, bottom
+# 3. Geomagnetic field and magnetization directions (deg): exf_inc, exf_dec, mgz_inc, mgz_dec
+# 4. Penalty parameter: mu
+# 5. Penalty parameter (nu) and bound constraints: nu, lower_limit (beta0), upper_limit (beta1)
+# 6. Inversion parameters: tolerance, maximum number of iterations
 
-# number of grid cells
-1. nx, ny, nz:			50, 50, 25
+# Note: if nu == -1., bound constraint is not applied.
 
-# x, y, z range
-2. x, y, zrange (km):		-2.5, 2.5, -2.5, 2.5, 0., -2.5
+# ----------------------------------------------------------------------
 
-# inclination, declination(deg.)
-3. exf_inc,dec,mgz_inc,dec:	45., -7., 45., -7.
+# 1. Number of grid cells
+1. nx, ny, nz:                            50, 50, 25
 
-# penalty parameter mu
-4. mu:					1.0
+# 2. Analysis domain (km)
+2. west, east, south, north, top, bottom: -2.5, 2.5, -2.5, 2.5, 0.5, -2.5
 
-# penalty parameter nu and lower, upper
-5. nu, beta0, beta1:		-1.0, 0., 0.
+# 3. Geomagnetic field and magnetization inclination and declination (deg)
+3. geomag_inc, dec, mgz_inc, dec:         45.0, -7.0, 45.0, -7.0
 
-# tolerance, maxiter
-6. tol, maxiter:			1.e-4, 100000
+# 4. Penalty parameter
+4. mu:                                    1.0
 
+# 5. Penalty parameter (nu) and magnetization bounds
+5. nu, lower, upper:                      -1.0, 0.0, 0.0
+
+# 6. Tolerance and maximum number of iterations
+6. tol, maxiter:                          1.0e-4, 100000
