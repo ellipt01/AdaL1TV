@@ -1,0 +1,15 @@
+*~
+*.o
+*.d
+
+*.data
+*.in
+*.mat
+*.vec
+*.jpg
+*.pdf
+
+.ipynb_*
+bin
+share
+work
