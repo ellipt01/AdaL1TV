@@ -24,7 +24,7 @@
 1. nx, ny, nz:                            50, 50, 25
 
 # 2. Analysis domain (km)
-2. west, east, south, north, top, bottom: -2.5, 2.5, -2.5, 2.5, 0.5, -2.5
+2. west, east, south, north, top, bottom: -2.5, 2.5, -2.5, 2.5, 0.0, -2.5
 
 # 3. Geomagnetic field and magnetization inclination and declination (deg)
 3. geomag_inc, dec, mgz_inc, dec:         45.0, -7.0, 45.0, -7.0

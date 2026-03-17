@@ -2,7 +2,7 @@
 
 root="../"
 
-if [ ! -e $root/bin/l1l2inv -o $root/bin/l1tvinv ]; then
+if [ ! -e $root/bin/l1l2inv -o ! -e $root/bin/l1tvinv ]; then
 	make TIMING=1 -C $root
 	make install -C $root
 fi
