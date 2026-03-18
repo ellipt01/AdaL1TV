@@ -9,6 +9,15 @@ This project includes two main programs tailored to specific use cases:
 1. `l1l2inv`: Inversion using L1-L2 regularization
 2. `l1tvinv`: Inversion using Adaptive L1-Total Variation (Adaptive L1-TV) regularization
 
+## Two-Stage Inversion Strategy
+This software implements the **two-stage inversion strategy** to achieve high-resolution 3D magnetic imaging without a priori geological information.
+
+**Stage 1: Preliminary L1-L2 Inversion**
+First, we perform an L1-L2 regularization inversion (l1l2inv). This step generates a sparse model that identifies the approximate locations and boundaries of magnetic sources. The resulting model (beta_L1L2.vec) serves as a "structural guide."
+
+**Stage 2: Adaptive L1-Anisotropic TV Inversion**
+Next, we run the adaptive L1-TV inversion (l1tvinv) using the model from Stage 1 as a guide. By calculating space-variant weights from the guide model, this stage effectively suppresses grid bias (coordinate-axis artifacts) and recovers sharp, dipping, or deep-seated structures that are often blurred in conventional TV methods.
+
 ## Key Features
 
 * **Advanced Regularization Algorithms**: Supports L1-L2 norm penalties based on sparse modeling, as well as 3D L1-TV regularization capable of adaptive weighting based on a guide model.
@@ -101,6 +110,19 @@ Optional Arguments:
   -s <settings_file>    Path to the settings file (default: settings.par)
   -v                    Verbose mode
   -h                    Show help message
+```
+
+### 3. Two-stage Adaptive L1-TV inversion
+**Quick Start**
+
+A shell script `example/run.sh` is provided to demonstrate the standard two-stage workflow. 
+
+When `run.sh` is executed, it first performs the Stage 1 L1–L2 inversion with $\alpha = 0.9$ and $\log_{10} \lambda = 0.25$.
+Subsequently, it automatically executes the Stage 2 AdaL1TV inversion using the resulting `beta_L1L2.vec` as the structural guide.
+
+```bash
+# Execute the automated two-stage inversion
+./run.sh
 ```
 
 ## Outputs
