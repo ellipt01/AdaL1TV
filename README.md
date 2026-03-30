@@ -68,6 +68,40 @@ Provide this file using the `-t` option when incorporating surface topography. E
 <Easting (km)>    <Northing (km)>    <Elevation (km)>
 ```
 
+## Configuration File (settings.par)
+The inversion parameters and 3D grid definitions are managed via a settings file (default: settings.par). The program identifies parameters by specific numerical identifiers (1-6).
+
+> **Important**: Do not modify the prefix strings (e.g., 1. nx, ny, nz:) as they are used for parsing.
+
+### Parameter Descriptions:
+1. Grid Cells: Number of cells along X (East-West), Y (North-South), and Z (Vertical) axes.
+2. Domain Limits (km): Spatial extent of the inversion model. Note that 'top' and 'bottom' define the vertical range.
+3. Magnetic Directions (deg): Inclination and Declination for both the ambient geomagnetic field and the source magnetization vector.
+4. ADMM Penalty ($\mu$): The primary penalty parameter for the ADMM optimization.
+5. Bound Constraints ($\nu$): Penalty parameter for bound constraints. Set nu to -1.0 to disable bounds.
+6. Convergence: Stop tolerance and the maximum number of iterations for the solver.
+
+Example Template:
+```
+# 1. Number of grid cells
+1. nx, ny, nz:                            40, 40, 20
+
+# 2. Analysis domain (km)
+2. west, east, south, north, top, bottom: -2.0, 2.0, -2.0, 2.0, 0.0, -2.0
+
+# 3. Geomagnetic field and magnetization (deg)
+3. geomag_inc, dec, mgz_inc, dec:          45.0, -7.0, 45.0, -7.0
+
+# 4. Penalty parameter
+4. mu:                                    1.0
+
+# 5. Bound constraints (Set nu = -1.0 to disable)
+5. nu, lower, upper:                      -1.0, 0.0, 0.0
+
+# 6. Tolerance and Max Iterations
+6. tol, maxiter:                          1.0e-3, 10000
+```
+
 ## Usage
 
 ### 1. L1-L2 Inversion (`l1l2inv`)
