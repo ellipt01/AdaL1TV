@@ -135,4 +135,8 @@ Upon successful completion, the program generates the following files:
 
 ## License
 
-GPL.
+GPL v3.
+
+### Citation
+If you use this code in your research, please cite:
+Utsugi, M., (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion, Computers & Geosciences (submitted).
