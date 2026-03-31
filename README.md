@@ -74,7 +74,7 @@ The inversion parameters and 3D grid definitions are managed via a settings file
 > **Important**: Do not modify the prefix strings (e.g., 1. nx, ny, nz:) as they are used for parsing.
 
 ### Parameter Descriptions:
-1. Grid Cells: Number of cells along X (East-West), Y (North-South), and Z (Vertical) axes.
+1. Grid Cells: Number of cells along X (North-South), Y (East-West), and Z (Downward) axes.
 2. Domain Limits (km): Spatial extent of the inversion model. Note that 'top' and 'bottom' define the vertical range.
 3. Magnetic Directions (deg): Inclination and Declination for both the ambient geomagnetic field and the source magnetization vector.
 4. ADMM Penalty ($\mu$): The primary penalty parameter for the ADMM optimization.
@@ -87,10 +87,10 @@ Example Template:
 1. nx, ny, nz:                            40, 40, 20
 
 # 2. Analysis domain (km)
-2. west, east, south, north, top, bottom: -2.0, 2.0, -2.0, 2.0, 0.0, -2.0
+2. south, north, west, east, top, bottom: -2.0, 2.0, -2.0, 2.0, 0.0, -2.0
 
 # 3. Geomagnetic field and magnetization (deg)
-3. geomag_inc, dec, mgz_inc, dec:          45.0, -7.0, 45.0, -7.0
+3. geomag_inc, dec, mgz_inc, dec:         45.0, -7.0, 45.0, -7.0
 
 # 4. Penalty parameter
 4. mu:                                    1.0

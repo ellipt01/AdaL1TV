@@ -224,15 +224,20 @@ void AdaL1TV::parse_settings_file (FILE* fp)
 		if (strlen (ptr) <= 1) continue;
 
 		switch (p[0]) {
+			// In the program, the x-, y-, and z-axes are defined to
+			// eastward, northward, and upward,
+			// and are transformed upon reading the settings file.
 			case '1':
-				sscanf (ptr, "%zu,%zu,%zu", &nx_, &ny_, &nz_);
+				sscanf (ptr, "%zu,%zu,%zu", &ny_, &nx_, &nz_);
 				break;
 			case '2':
 				xrange_ = new double[2];
 				yrange_ = new double[2];
 				zrange_ = new double[2];
 				sscanf (ptr, "%lf,%lf,%lf,%lf,%lf,%lf",
-					  &xrange_[0], &xrange_[1], &yrange_[0], &yrange_[1], &zrange_[0], &zrange_[1]);
+					  &yrange_[0], &yrange_[1], &xrange_[0], &xrange_[1], &zrange_[0], &zrange_[1]);
+				zrange[0] *= -1.;
+				zrange[1] *= -1.;
 				break;
 			case '3':
 				sscanf (ptr, "%lf,%lf,%lf,%lf", &exf_inc_, &exf_dec_, &mgz_inc_, &mgz_dec_);
@@ -259,11 +264,11 @@ void AdaL1TV::export_settings (FILE* stream)
 	fprintf (stream, "#################################################################\n");
 	fprintf (stream, "# *** penalty type: %s ***\n", (guide_model_file_specified_) ? "AdaL1TV" : "L1TV");
 	fprintf (stream, "# \n");
-	fprintf (stream, "# num of grid cells:nx, ny, nz: %zu, %zu, %zu\n", nx_, ny_, nz_);
+	fprintf (stream, "# num of grid cells:nx, ny, nz: %zu, %zu, %zu\n", ny_, nx_, nz_);
 	fprintf (stream, "# range of the model space:\n");
-	fprintf (stream, "#    x range :                  [%.2f, %.2f]\n", xrange_[0], xrange_[1]);
-	fprintf (stream, "#    y range :                  [%.2f, %.2f]\n", yrange_[0], yrange_[1]);
-	fprintf (stream, "#    z range :                  [%.2f, %.2f]\n", zrange_[0], zrange_[1]);
+	fprintf (stream, "#    x range (south-north):     [%.2f, %.2f]\n", yrange_[0], yrange_[1]);
+	fprintf (stream, "#    y range (west-east):       [%.2f, %.2f]\n", xrange_[0], xrange_[1]);
+	fprintf (stream, "#    z range (up-down):         [%.2f, %.2f]\n", -zrange_[0], -zrange_[1]);
 	fprintf (stream, "# exf. and mag. inc, dec.:      %.2f, %.2f, %.2f, %.2f\n",
 		   exf_inc_, exf_dec_, mgz_inc_, mgz_dec_);
 	fprintf (stream, "# tolerance and num of maxiter: %.2e, %zu\n", tolerance_, maxiter_);
