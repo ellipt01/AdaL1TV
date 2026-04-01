@@ -236,8 +236,8 @@ void AdaL1TV::parse_settings_file (FILE* fp)
 				zrange_ = new double[2];
 				sscanf (ptr, "%lf,%lf,%lf,%lf,%lf,%lf",
 					  &yrange_[0], &yrange_[1], &xrange_[0], &xrange_[1], &zrange_[0], &zrange_[1]);
-				zrange[0] *= -1.;
-				zrange[1] *= -1.;
+				zrange_[0] *= -1.;
+				zrange_[1] *= -1.;
 				break;
 			case '3':
 				sscanf (ptr, "%lf,%lf,%lf,%lf", &exf_inc_, &exf_dec_, &mgz_inc_, &mgz_dec_);
