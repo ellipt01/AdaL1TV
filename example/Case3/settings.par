@@ -27,13 +27,13 @@
 2. south, north, west, east, top, bottom: -2.5, 2.5, -2.5, 2.5, 0.0, 2.5
 
 # 3. Geomagnetic field and magnetization inclination and declination (deg)
-3. geomag_inc, dec, mgz_inc, dec:         45.0, -7.0, 45.0, -7.0
+3. geomag_inc, dec, mgz_inc, dec:         70.0, 15.0, 70.0, 15.0
 
 # 4. Penalty parameter
 4. mu:                                    1.0
 
 # 5. Penalty parameter (nu) and magnetization bounds
-5. nu, lower, upper:                      -1.0, 0.0, 0.0
+5. nu, lower, upper:                      1.0, 0.0, 100.0
 
 # 6. Tolerance and maximum number of iterations
 6. tol, maxiter:                          1.0e-4, 100000

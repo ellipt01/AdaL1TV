@@ -1,0 +1,32 @@
+### Example: Case 1 (Ideal Guide) ###
+
+# Description
+This example demonstrates the inversion workflow for a synthetic three-block model using AdaL1TV regularization. In this calculation, the true synthetic model is used as an ideal guide model.
+
+It provides the necessary scripts to reproduce Figures 1 through 4 from the following manuscript:
+
+Utsugi, M., (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion, Computers & Geosciences (submitted).
+
+# Workflow Overview
+The entire workflow is automated via the provided shell script run.sh.
+
+This script performs the AdaL1TV inversion as follows:
+
+../bin/l1tvinv -f input_mag.in -l -2. -g true.vec:1.e-4:1.:1. -c 1. -s settings.par -v
+
+* Input: input_mag.in (pre-included magnetic anomaly dataset).
+* Input: true.vec (pre-included true weighted model file used as a guide).
+
+[ Final Output ]
+By executing ./run.sh, the final model file is automatically generated as:
+
+model.data
+
+# Visualization
+Once the inversion is complete, you can visualize the estimated model and data misfits.
+
+Open and run the provided Jupyter Notebook:
+
+Case1_display_results.ipynb
+
+This notebook generates Figures 1, 2, 3, and 4 shown in the manuscript.

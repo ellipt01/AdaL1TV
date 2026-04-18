@@ -1,0 +1,22 @@
+###  Example: Case 2 Figure 8 ###
+
+# Description
+This example demonstrates AdaL1TV inversion for various gamma.
+
+It provides the necessary scripts to reproduce Figure 8 from the following manuscript:
+
+Utsugi, M., (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion, Computers & Geosciences (submitted).
+
+# Workflow
+The entire workflow is automated via the provided shell script run.sh. This script executes the Adaptive L1-TV (AdaL1TV) inversion for a predefined sequence of gamma values:
+
+schedule=(1/32, 1/16, 1/8, 1/4, 1/2, 1.)
+
+for gamma in "${schedule[@]}"; do
+../../bin/l1tvinv -f ../input_mag.in -l 0.25 -g ../beta_L1L2_opt.vec:1.7783:0.1:0.1 -c "$gamma" -s ../settings.par -v
+done
+
+# Visualization
+Open and run the provided Jupyter Notebook: Case2_fig8.ipynb
+
+This notebook generates Figure 8 shown in the manuscript.

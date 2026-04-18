@@ -268,7 +268,7 @@ void AdaL1TV::export_settings (FILE* stream)
 	fprintf (stream, "# range of the model space:\n");
 	fprintf (stream, "#    x range (south-north):     [%.2f, %.2f]\n", yrange_[0], yrange_[1]);
 	fprintf (stream, "#    y range (west-east):       [%.2f, %.2f]\n", xrange_[0], xrange_[1]);
-	fprintf (stream, "#    z range (up-down):         [%.2f, %.2f]\n", -zrange_[0], -zrange_[1]);
+	fprintf (stream, "#    z range (top-bottom):      [%.2f, %.2f]\n", -zrange_[0], -zrange_[1]);
 	fprintf (stream, "# exf. and mag. inc, dec.:      %.2f, %.2f, %.2f, %.2f\n",
 		   exf_inc_, exf_dec_, mgz_inc_, mgz_dec_);
 	fprintf (stream, "# tolerance and num of maxiter: %.2e, %zu\n", tolerance_, maxiter_);

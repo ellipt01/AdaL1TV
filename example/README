@@ -1,13 +1,15 @@
-Exaample - README
+### Reproducing Manuscript Figures ###
 
-The execution of run.sh begins with an L1–L2 inversion using alpha=0.9 and log10 lambda=-0.25:
+The run.sh scripts included in each subdirectory (Case1, Case2, Case2/fig8, and Case3) reproduce Figures 1–12 of the following manuscript:
 
-../bin/l1l2inv -f input_mag.in -l -0.25 -a 0.9 -s settings.par -v
+Utsugi, M. (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion. Computers & Geosciences (submitted).
 
-The resulting model, beta_L1L2.vec, is then used as a guide for the subsequent AdaL1TV inversion:
+# How to Run
+Navigate to each subdirectory and execute the run.sh script.
 
-../bin/l1tvinv -f input_mag.in -l 0.0 -g beta_L1L2.vec:0.5623:0.1:0.1 -c 0.125 -s settings.par -v
+Example:
 
-This process generates the file model.data.
+cd Case1
+./run.sh
 
-The notebook EW_cross_section.ipynb visualizes the east–west cross-section at x=0km.
+For more detailed instructions, refer to the README file in each subdirectory.

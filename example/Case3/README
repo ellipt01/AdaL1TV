@@ -1,0 +1,56 @@
+###  Example: Case 3 (Dipping-Slab Model)  ###
+
+# Description
+This example demonstrates the inversion workflow for a synthetic three-block model using conventional L1-TV, L1-L2, and AdaL1TV regularizations.
+
+It provides the necessary scripts to reproduce Figures 9 through 12 from the following manuscript:
+
+Utsugi, M., (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion, Computers & Geosciences (submitted).
+
+# Workflow Overview
+The entire workflow is automated via the provided shell script run.sh.
+
+The execution consists of three main stages:
+
+1. Conventional L1-TV Inversion (Without Guide Model)
+First, a conventional L1-TV inversion is performed without using a structural guide. The script loops over a range of regularization parameters (lambda):
+
+for log10_lambda in $(seq 0.0 0.25 1.5); do
+../bin/l1tvinv -f input_mag.in -l "$log10_lambda" -s settings.par -v
+done
+
+* Input: input_mag.in (pre-included magnetic anomaly dataset).
+
+L-curve Analysis: For each value of lambda, the inversion is executed and an L-curve is constructed. The optimal lambda is automatically determined as the point of maximum curvature on the L-curve.
+
+2. Preliminary L1-L2 Inversion
+Next, an L1-L2 inversion is performed with the mixing ratio alpha = 0.9 to construct a sparse guide model:
+
+for log10_lambda in $(seq 0.0 0.25 1.5); do
+../bin/l1l2inv -f input_mag.in -l "$log10_lambda" -a 0.9 -s settings.par -v
+done
+
+* Output: The resulting model file beta_L1L2.vec serves as the structural guide for the final stage.
+
+3. Adaptive L1-TV (AdaL1TV) Inversion
+Finally, the AdaL1TV inversion is carried out using the guide model obtained in Stage 2. The weight exponent is set to gamma = 0.125:
+
+for log10_lambda in $(seq 0.0 0.25 1.5); do
+../bin/l1tvinv -f input_mag.in -l "$log10_lambda" -g beta_L1L2.vec:"$log10_lambda_L1L2_opt":0.1:0.1 -c 0.125 -s settings.par -v
+done
+
+* Parameter Note: "$log10_lambda_L1L2_opt" is the optimal lambda determined during the preliminary L1-L2 inversion (Stage 2).
+
+[ Final Output ]
+By executing ./run.sh, the final model corresponding to the optimally selected lambda (based on the L-curve criterion) is automatically generated as:
+
+model_AdaL1TV_opt.data
+
+# Visualization
+Once the inversions are complete, you can visualize the estimated models and data misfits.
+
+Open and run the provided Jupyter Notebook:
+
+Case3_display_results.ipynb
+
+This notebook generates the L-curve, and cross-sections corresponding to the Figures 9, 10, 11, and 12 shown in the manuscript.
