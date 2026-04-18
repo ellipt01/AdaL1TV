@@ -12,10 +12,10 @@ The entire workflow is automated via the provided shell script run.sh.
 
 This script performs the AdaL1TV inversion as follows:
 
-../bin/l1tvinv -f input_mag.in -l -2. -g true.vec:1.e-4:1.:1. -c 1. -s settings.par -v
+../bin/l1tvinv -f input_mag.in -l -2. -g true.quide:1.e-4:1.:1. -c 1. -s settings.par -v
 
 * Input: input_mag.in (pre-included magnetic anomaly dataset).
-* Input: true.vec (pre-included true weighted model file used as a guide).
+* Input: true.guide (pre-included true weighted model file used as a guide).
 
 [ Final Output ]
 By executing ./run.sh, the final model file is automatically generated as:
