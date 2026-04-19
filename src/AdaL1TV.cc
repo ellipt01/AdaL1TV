@@ -49,10 +49,10 @@ void AdaL1TV::printUsage ()
 	fprintf (stderr, "       -f <input_file>\n");
 	fprintf (stderr, "       -l <log10(lambda)>   regularization parameter\n");
 	fprintf (stderr, "[optional arguments]\n");
-	fprintf(stderr, "        -g <guide_model_file>:<sigma>:<c1>:<c2>\n");
-	fprintf(stderr, "            guide_model_file : guide model in mm_real format\n");
-	fprintf(stderr, "            sigma            : regularization parameter (lambda) used to derive guide model\n");
-	fprintf(stderr, "            c1, c2           : coefficients for defining the active set\n");
+	fprintf (stderr, "       -g <guide_model_file>:<sigma>:<c1>:<c2>\n");
+	fprintf (stderr, "           guide_model_file : guide model in mm_real format\n");
+	fprintf (stderr, "           sigma            : regularization parameter (lambda) used to derive guide model\n");
+	fprintf (stderr, "           c1, c2           : coefficients for defining the active set\n");
 	fprintf (stderr, "       -c <weight_exponent> (default: 1)\n");
 	fprintf (stderr, "       -t <terrain_file>    (default: terrain.in)\n");
 	fprintf (stderr, "       -s <settings_file>   (default: settings.par)\n");
