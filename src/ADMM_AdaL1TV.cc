@@ -195,7 +195,9 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double sigma, double gamma, const mm_real *g
 		double	val = median / (fabs (d->data[i]) + eps);
 		adap_w_[i] = pow (val, gamma);
 	}
+#ifdef DEBUG
 	std::cout << "0: count = " << count << ", median = " << median << std::endl;
+#endif
 	delete [] absd;
 
 	// | D * beta |
@@ -217,7 +219,9 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double sigma, double gamma, const mm_real *g
 		double	val = median / (fabs (d->data[i]) + eps);
 		adap_w_[i] = pow (val, gamma);
 	}
+#ifdef DEBUG
 	std::cout << "1: count = " << count << ", median = " << median << std::endl;
+#endif
 	delete [] absd;
 
 	mm_real_free (d);

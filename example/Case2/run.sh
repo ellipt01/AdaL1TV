@@ -78,7 +78,7 @@ for log_lambda in $(seq "${schedule[@]}"); do
 
 	if [ ! -e model_AdaL1TV_"$idx".data ]; then
 		"$root"/bin/l1tvinv -f input_mag.in -l "$log_lambda"\
-			-g beta_L1L2_opt.vec:"$lm_opt":0.1:0.1 -c 0.125 -s settings.par -v 2>&1 | tee -a log_case2
+			-g beta_L1L2_opt.vec:"$lm_opt":0.1:0.1 -c 0.125 -s settings.par -v 2>&1 | tee -a "$log_fn"
 
 		mv -f model.data model_AdaL1TV_"$idx".data
 		mv -f recovered.data recovered_AdaL1TV_"$idx".data
