@@ -175,3 +175,10 @@ GPL v3.
 ### Citation
 If you use this code in your research, please cite:
 Utsugi, M., (2026). Adaptive L1-Anisotropic Total Variation Regularization for 3D Magnetic Inversion, Computers & Geosciences (submitted).
+
+## Examples
+
+The `example` directory includes scripts to reproduce the results shown in the manuscript for three synthetic cases (Case 1–3).
+
+Each subdirectory (Case1, Case2, and Case3) contains a `run.sh` script that executes the full inversion workflow and reproduces the corresponding figures used in the above paper.
+
