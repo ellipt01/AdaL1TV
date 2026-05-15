@@ -85,6 +85,7 @@ void AdaL1TV::solve ()
 	FILE* fp = fopen (infile_, "r");
 	if (!fp) throw std::runtime_error ("cannot open specified input file " + std::string (infile_));
 	data_ = fread_data_array (fp);
+	for (size_t i = 0; i < data_->n; i++) data_->z[i] *= -1.;
 	fclose (fp);
 
 	f_ = mm_real_view_array (MM_REAL_DENSE, MM_REAL_GENERAL, data_->n, 1, data_->n, data_->data);
@@ -111,8 +112,14 @@ void AdaL1TV::exportResults (const char* ofn_model, const char* ofn_recovered)
 		throw std::runtime_error ("cannot open file " + std::string (ofn_model) + " to export derived model.");
 
 	mm_real	*beta = admm_->getModel ();
-	fwrite_grid_with_data (fp, magker_->getGrid (), beta->data, "%.4f\t%.4f\t%.4f\t%.6e");
+	grid		*g = magker_->getGrid ();
+	vector3d	*pos = vector3d_new (0., 0., 0.);
+	for (size_t n = 0; n < g->n; n++) {
+		grid_get_nth (g, n, pos, NULL);
+		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e\n", pos->x, pos->y, - pos->z, beta->data[n]);
+	}
 	fclose (fp);
+	vector3d_free (pos);
 	mm_real_free (beta);
 
 	// Export recovered anomaly
@@ -121,7 +128,9 @@ void AdaL1TV::exportResults (const char* ofn_model, const char* ofn_recovered)
 	if (!fp)
 		throw std::runtime_error ("cannot open file " + std::string (ofn_recovered) + " to export recovered anomaly.");
 
-	fwrite_data_array_with_data (fp, data_, h->data, "%.4f\t%.4f\t%.4f\t%.6e");
+	for (size_t i = 0; i < data_->n; i++) {
+		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e", data_->x[i], data_->y[i], -data_->z[i], h->data[i]);
+	}
 	fclose (fp);
 	mm_real_free (h);
 

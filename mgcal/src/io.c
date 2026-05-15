@@ -378,7 +378,7 @@ fwrite_grid_to_xyz (FILE *stream, const grid *g, const char *format)
 void
 fwrite_grid_with_data (FILE *stream, const grid *g, const double *data, const char *format)
 {
-	size_t		n;
+	size_t	n;
 	vector3d	*pos;
 	char		fm[BUFSIZ];
 

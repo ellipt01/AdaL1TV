@@ -73,6 +73,7 @@ L1L2::solve ()
 	FILE* fp = fopen (infile_, "r");         // Open data file
 	if (!fp) throw std::runtime_error ("Cannot open specified input file.");
 	data_ = fread_data_array (fp);
+	for (size_t i = 0; i < data_->n; i++) data_->z[i] *= -1.;
 	fclose (fp);
 
 	// Create RHS vector as mm_real view
@@ -103,16 +104,24 @@ L1L2::exportResults(const char* ofn_model, const char* ofn_recovered)
 	FILE* fp = fopen (ofn_model, "w");
 	if (!fp) throw std::runtime_error ("Cannot open file " + std::string (ofn_model));
 
-	mm_real* beta = admm_->getModel ();
-	fwrite_grid_with_data (fp, magker_->getGrid (), beta->data, "%.4f\t%.4f\t%.4f\t%.6e");
+	mm_real	*beta = admm_->getModel ();
+	grid		*g = magker_->getGrid ();
+	vector3d	*pos = vector3d_new (0., 0., 0.);
+	for (size_t n = 0; n < g->n; n++) {
+		grid_get_nth (g, n, pos, NULL);
+		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e\n", pos->x, pos->y, -pos->z, beta->data[n]);
+	}
 	fclose (fp);
+	vector3d_free (pos);
 	mm_real_free (beta);
 
 	mm_real* h = admm_->recover ();
 	fp = fopen (ofn_recovered, "w");
 	if (!fp) throw std::runtime_error ("Cannot open file " + std::string (ofn_recovered));
 
-	fwrite_data_array_with_data (fp, data_, h->data, "%.4f\t%.4f\t%.4f\t%.6e");
+	for (size_t i = 0; i < data_->n; i++) {
+		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e", data_->x[i], data_->y[i], -data_->z[i], h->data[i]);
+	}
 	fclose (fp);
 	mm_real_free (h);
 }
@@ -135,7 +144,7 @@ L1L2::set_terrain (const char *fn)
 	while (fgets (buf, BUFSIZ, fp) != nullptr) {
 		double	x, y, z;
 		sscanf (buf, "%lf\t%lf\t%lf", &x, &y, &z);
-		zsurf[k++] = z;
+		zsurf[k++] = -z;
 		if (k >= n) break;
 	}
 	if (k != n) throw std::runtime_error ("Number of terrain data is incompatible with number of grid.");
