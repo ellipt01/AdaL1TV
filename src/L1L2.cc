@@ -120,7 +120,7 @@ L1L2::exportResults(const char* ofn_model, const char* ofn_recovered)
 	if (!fp) throw std::runtime_error ("Cannot open file " + std::string (ofn_recovered));
 
 	for (size_t i = 0; i < data_->n; i++) {
-		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e", data_->x[i], data_->y[i], -data_->z[i], h->data[i]);
+		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e\n", data_->x[i], data_->y[i], -data_->z[i], h->data[i]);
 	}
 	fclose (fp);
 	mm_real_free (h);
