@@ -1,4 +1,6 @@
 #include <iostream>
+#include <string>
+#include <algorithm>
 #include <cstring>
 #include <unistd.h>
 #include <mgcal.h>
@@ -11,21 +13,6 @@
 #include "ADMM_AdaL1TV.h"
 #include "L1L2.h"
 #include "AdaL1TV.h"
-
-static size_t
-count_num_delim (char *str, const char delim)
-{
-	size_t	count = 0;
-	char		*p = str;
-	while (p) {
-		p = strchr (p, delim);
-		if (p == nullptr) break;
-		count++;
-		p++;
-	}
-	return count;
-
-}
 
 /****** public ******/
 AdaL1TV::AdaL1TV (const char* toolname)
@@ -172,8 +159,9 @@ void AdaL1TV::start_ADMM (mm_real* f, mm_real* K)
 // Parse inline parameters
 void AdaL1TV::parse_command_line_args (int argc, char** argv)
 {
-	int	solver_type_int = -1;
-	char	opt;
+	int				solver_type_int = -1;
+	std::string	arg;
+	char			opt;
 	while ((opt = getopt (argc, argv, ":f:l:g:c:t:s:vh")) != -1) {
 		switch (opt) {
 			case 'f':
@@ -185,7 +173,8 @@ void AdaL1TV::parse_command_line_args (int argc, char** argv)
 				lambda_specified_ = true;
 				break;
 			case 'g':
-				if (count_num_delim (optarg, ':') != 3)
+				arg = std::string (optarg);
+				if (std::count (arg.begin (), arg.end (), ':') != 3)
 					throw std::runtime_error ("-g option has to specify guide_model_fn(char):sigma(double):c1:c2");
 				guide_model_file_ = new char[256];
 				sscanf (optarg, "%256[^:]:%lf:%lf:%lf", guide_model_file_, &sigma_, &c1_, &c2_);
