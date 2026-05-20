@@ -11,3 +11,5 @@
 .ipynb_*
 share
 work
+bin
+lib
