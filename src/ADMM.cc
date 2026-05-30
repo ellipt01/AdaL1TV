@@ -231,7 +231,7 @@ void ADMM::update_slack_s ()
 void ADMM::update_dual_u ()
 {
 	for (size_t j = 0; j < n_; j++)
-		u_->data[j] += mu_ * (s_->data[j] - beta_->data[j]);
+		u_->data[j] += s_->data[j] - beta_->data[j];
 }
 
 // Update slack variable t
@@ -249,7 +249,7 @@ void ADMM::update_slack_t ()
 void ADMM::update_dual_v ()
 {
 	for (size_t j = 0; j < n_; j++) {
-		v_->data[j] += nu_ * (t_->data[j] - beta_->data[j]);
+		v_->data[j] += t_->data[j] - beta_->data[j];
 	}
 }
 

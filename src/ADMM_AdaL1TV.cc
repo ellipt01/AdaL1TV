@@ -315,7 +315,7 @@ ADMM_AdaL1TV::update_dual_u ()
 {
 	mm_real_memcpy (tmp_kn_, s_);
 	mm_real_axjpy (-1., d_, 0, tmp_kn_);	 // tmp_kn = s - d
-	mm_real_axjpy (mu_, tmp_kn_, 0, u_); // u = u + mu * (s - d)
+	mm_real_axjpy (1., tmp_kn_, 0, u_); // u = u + (s - d)
 }
 
 // Evaluate primal and dual residuals for stopping criteria
