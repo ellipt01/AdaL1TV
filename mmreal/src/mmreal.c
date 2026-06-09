@@ -9,12 +9,29 @@
 #include <string.h>
 #include <math.h>
 #include <stdbool.h>
+#include <assert.h>
+#include <threads.h> // C11 standard header for thread_local alias
 
 #include "mmreal.h"
 #include "_blas_.h"
 
+/**
+ * @brief The thread-local variable to store the last error code.
+ *
+ * Each thread will have its own independent copy of this variable.
+ * It's declared 'static' to be private to this implementation file.
+ */
+static thread_local MMResult g_last_error = MM_SUCCESS;
+
 // A static integer constant with value 1, often used for BLAS/LAPACK calls.
-static const MM_INT	ione  =  1;
+static const blas_int	ione  =  1;
+
+static inline blas_int
+mm_blas_int (MM_INT v)
+{
+	assert (v >= 0 && v <= BLAS_INT_MAX);  // 上流で保証済みのデバッグ保険
+	return (blas_int) v;
+}
 
 /* --- 0. Support Utilities --- */
 static void	set_last_error (const MMResult error);
@@ -27,6 +44,7 @@ static void	mm_real_set_general (mm_real *x);
 static void	mm_real_set_symmetric (mm_real *x);
 static void	mm_real_set_upper (mm_real *x);
 static void	mm_real_set_lower (mm_real *x);
+static bool	mm_real_check_owner (const mm_real *x, const char *func, const char *file, int line);
 static MM_INT	bin_search (MM_INT key, const MM_INT *s, MM_INT n);
 static MM_INT	find_row_element (MM_INT j, const mm_sparse *s, MM_INT k);
 
@@ -71,7 +89,7 @@ static void	mm_real_di_row_to (mm_real *di, const mm_dense *d, MM_INT i);
 static void	mm_real_adxpdy (MM_DBL alpha, const mm_real *x, mm_real *y);
 static void	mm_real_adxpsy (MM_DBL alpha, const mm_real *x, mm_real *y);
 static void	mm_real_asxpdy (MM_DBL alpha, const mm_real *x, mm_real *y);
-static void	mm_real_asxpsy (MM_DBL alpha, const mm_real *x, mm_real *y);
+static bool	mm_real_asxpsy (MM_DBL alpha, const mm_real *x, mm_real *y);
 static void	mm_real_asjpy (MM_DBL alpha, const mm_sparse *s, MM_INT j, mm_dense *y);
 static void	mm_real_adjpy (MM_DBL alpha, const mm_dense *d, MM_INT j, mm_dense *y);
 
@@ -111,7 +129,7 @@ static mm_sparse	*mm_real_fread_sparse (FILE *fp, MM_typecode typecode);
 static mm_dense	*mm_real_fread_dense (FILE *fp, MM_typecode typecode);
 static void	mm_real_fwrite_sparse (FILE *stream, const mm_sparse *s, const char *format);
 static void	mm_real_fwrite_dense (FILE *stream, const mm_dense *d, const char *format);
-static void	check_fread_status (size_t items_read, size_t items_expected, const char *func_name, const char *file, int line);
+static bool	check_fread_status (size_t items_read, size_t items_expected, const char *func_name, const char *file, int line);
 static mm_sparse	*mm_real_fread_binary_sparse (FILE *fp);
 static mm_dense	*mm_real_fread_binary_dense (FILE *fp);
 static void	mm_real_fwrite_binary_sparse (FILE *fp, const mm_sparse *s);
@@ -133,11 +151,8 @@ set_last_error (MMResult res)
 /* --- Public API Functions --- */
 
 /**
- * @brief Prints an error message to stderr and exits the program.
- * @param function_name The name of the function where the error occurred.
- * @param error_msg The error message to display.
- * @param file The source file name where the error occurred.
- * @param line The line number where the error occurred.
+ * @brief Records an error: prints a message to stderr and stores the code
+ *        as the last error. Does NOT terminate the program.
  */
 static void
 report_error (const MMResult error, const char *function_name, const char *error_msg, const char *file, int line)
@@ -298,6 +313,20 @@ mm_real_set_lower (mm_real *x)
 }
 
 /**
+ * @brief Check owner of the mm_real object.
+ */
+static bool
+mm_real_check_owner (const mm_real *x, const char *func, const char *file, int line)
+{
+	if (!x->owner) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, func,
+			"Operation would free/realloc data not owned by this view.", file, line);
+		return false;
+	}
+	return true;
+}
+
+/**
  * @brief Searches for a key in a sorted integer array using binary search.
  * @param key The value to search for.
  * @param s The sorted array to search in (read-only).
@@ -450,6 +479,12 @@ mm_real_new (MMRealFormat format, MMRealSymm symm, MM_INT m, MM_INT n, MM_INT nn
 		snprintf(msg, sizeof (msg),
 			"Matrix dimensions must be positive, but got m=%ld, n=%ld.", m, n);
 		report_error(MM_ERROR_INVALID_ARGUMENT, __func__, msg, __FILE__, __LINE__);
+		return NULL;
+	}
+	if (m > BLAS_INT_MAX || n > BLAS_INT_MAX || nnz > BLAS_INT_MAX) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, __func__,
+			"Dimension exceeds BLAS integer range; rebuild with ILP64 BLAS.",
+			__FILE__, __LINE__);
 		return NULL;
 	}
 	if (!is_format_valid (format)) {
@@ -633,6 +668,12 @@ mm_real_eye (MMRealFormat format, MM_INT n)
 mm_real *
 mm_real_view_array (MMRealFormat format, MMRealSymm symm, MM_INT m, MM_INT n, MM_INT nnz, MM_DBL *data)
 {
+	if (m > BLAS_INT_MAX || n > BLAS_INT_MAX || nnz > BLAS_INT_MAX) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, __func__,
+			"Dimension exceeds BLAS integer range; rebuild with ILP64 BLAS.",
+			__FILE__, __LINE__);
+		return NULL;
+	}
 	if (data == NULL) {
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input data is NULL.", __FILE__, __LINE__);
 		return NULL;
@@ -693,7 +734,7 @@ mm_real_realloc (mm_real *x, MM_INT nnz)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input object is NULL.", __FILE__, __LINE__);
 		return false;
 	}
-
+	if (!mm_real_check_owner (x, __func__, __FILE__, __LINE__)) return false;  // add
 	if (x->nnz == nnz) return true;
 
 	void	*temp_data = realloc (x->data, nnz * sizeof (MM_DBL));
@@ -734,7 +775,12 @@ mm_real_resize (mm_real *x, MM_INT m, MM_INT n, MM_INT nnz, bool do_realloc)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input object is NULL.", __FILE__, __LINE__);
 		return false;
 	}
-
+	if (m > BLAS_INT_MAX || n > BLAS_INT_MAX || nnz > BLAS_INT_MAX) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, __func__,
+			"Dimension exceeds BLAS integer range; rebuild with ILP64 BLAS.",
+			__FILE__, __LINE__);
+		return false;
+	}
 	if (do_realloc) {
 		// If failed, error is reported by mm_real_realloc()
 		if (!mm_real_realloc (x, nnz)) return false;
@@ -1013,7 +1059,8 @@ mm_real_memcpy_sparse (mm_sparse *dest, const mm_sparse *src)
 	memcpy (dest->p, src->p, (src->n + 1) * sizeof (MM_INT));
 
 	// Copy data array using BLAS dcopy function.
-	dcopy_ (&src->nnz, src->data, &ione, dest->data, &ione);
+	blas_int	nnz = mm_blas_int (src->nnz);
+	dcopy_ (&nnz, src->data, &ione, dest->data, &ione);
 }
 
 /**
@@ -1024,7 +1071,8 @@ mm_real_memcpy_sparse (mm_sparse *dest, const mm_sparse *src)
 static void
 mm_real_memcpy_dense (mm_dense *dest, const mm_dense *src)
 {
-	dcopy_ (&src->nnz, src->data, &ione, dest->data, &ione);
+	blas_int	nnz = mm_blas_int (src->nnz);
+	dcopy_ (&nnz, src->data, &ione, dest->data, &ione);
 }
 
 /**
@@ -1115,6 +1163,8 @@ mm_real_transpose_sparse (mm_sparse *s)
 	const MM_INT	m = s->m;
 	const MM_INT	n = s->n;
 	const MM_INT	nnz = s->nnz;
+
+	if (!mm_real_check_owner (s, __func__, __FILE__, __LINE__)) return false;
 
 	// Allocate memory for the transposed matrix structure
 	MM_INT	*t_i = malloc (nnz * sizeof (MM_INT));
@@ -1283,6 +1333,7 @@ mm_real_sparse_to_dense (mm_sparse *s)
 		return false;
 	}
 	if (!mm_real_is_sparse (s)) return false;
+	if (!mm_real_check_owner (s, __func__, __FILE__, __LINE__)) return false;  // add
 
 	const MM_INT	m = s->m;
 	const MM_INT	n = s->n;
@@ -1342,6 +1393,7 @@ mm_real_dense_to_sparse (mm_dense *d, MM_DBL threshold)
 		return false;
 	}
 	if (!mm_real_is_dense (d)) return false;
+	if (!mm_real_check_owner (d, __func__, __FILE__, __LINE__)) return false;  // add
 
 	const MM_INT	m = d->m;
 	const MM_INT	n = d->n;
@@ -2045,7 +2097,8 @@ static void
 mm_real_dj_col_to (mm_real *dj, const mm_dense *d, MM_INT j)
 {
 	if (!mm_real_is_symmetric (d)) {
-		dcopy_ (&d->m, d->data + j * d->m, &ione, dj->data, &ione);
+		blas_int	m = mm_blas_int (d->m);
+		dcopy_ (&m, d->data + j * d->m, &ione, dj->data, &ione);
 	} else {
 		// Reconstruct the full column from the stored symmetric half.
 		if (mm_real_is_upper (d)) {
@@ -2173,7 +2226,9 @@ mm_real_di_row_to (mm_real *di, const mm_dense *d, MM_INT i)
 {
 	if (!mm_real_is_symmetric (d)) {
 		// Use BLAS dcopy with stride to efficiently copy a row.
-		dcopy_ (&d->n, d->data + i, &d->m, di->data, &ione);
+		blas_int	n = mm_blas_int (d->n);
+		blas_int	lda = mm_blas_int (d->m);
+		dcopy_ (&n, d->data + i, &lda, di->data, &ione);
 	} else {
 		// Reconstruct the full row from the stored symmetric half.
 		if (mm_real_is_upper (d)) {
@@ -2274,7 +2329,8 @@ mm_real_adxpdy (MM_DBL alpha, const mm_real *x, mm_real *y)
 {
 	// Since both matrices are dense and have the same dimensions,
 	// we can treat their data arrays as single vectors and use daxpy.
-	daxpy_ (&y->nnz, &alpha, x->data, &ione, y->data, &ione);
+	blas_int	nnz = mm_blas_int (y->nnz);
+	daxpy_ (&nnz, &alpha, x->data, &ione, y->data, &ione);
 }
 
 /**
@@ -2291,7 +2347,8 @@ mm_real_adxpsy (MM_DBL alpha, const mm_real *x, mm_real *y)
 	// The result must be dense, so we first convert y.
 	mm_real_sparse_to_dense (y);
 	// Then, perform the standard dense-dense addition.
-	daxpy_ (&y->nnz, &alpha, x->data, &ione, y->data, &ione);
+	blas_int	nnz = mm_blas_int (y->nnz);
+	daxpy_ (&nnz, &alpha, x->data, &ione, y->data, &ione);
 }
 
 /**
@@ -2321,13 +2378,18 @@ mm_real_asxpdy (MM_DBL alpha, const mm_real *x, mm_real *y)
  * @param x The source sparse matrix (read-only).
  * @param y The destination sparse matrix (modified in-place).
  */
-static void
+static bool
 mm_real_asxpsy (MM_DBL alpha, const mm_real *x, mm_real *y)
 {
 	// Assumes both x and y columns are sorted by row index.
 	const MM_INT	m = x->m;
 	const MM_INT	n = x->n;
-	MM_INT		p[n + 1];
+	MM_INT		*p = malloc ((n + 1) * sizeof (MM_INT));
+	if (p == NULL) {
+		report_error (MM_ERROR_ALLOCATION_FAILED, __func__,
+			"Failed to allocate column pointer buffer.", __FILE__, __LINE__);
+		return false;
+	}
 	p[0] = 0;
 
 	// --- Pass 1 (Symbolic): Determine the non-zero structure of the result. ---
@@ -2358,7 +2420,9 @@ mm_real_asxpsy (MM_DBL alpha, const mm_real *x, mm_real *y)
 
 	// --- Pass 2 (Numeric): Compute the values. ---
 	mm_real	*z = mm_real_new (MM_REAL_SPARSE, y->symm, m, n, total_nnz);
+	if (z == NULL) { free (p); return false; }
 	memcpy (z->p, p, (n + 1) * sizeof (MM_INT));
+	free (p);
 
 	MM_INT	write_idx = 0;
 	for (MM_INT j = 0; j < n; j++) {
@@ -2403,9 +2467,12 @@ mm_real_asxpsy (MM_DBL alpha, const mm_real *x, mm_real *y)
 	}
 
 	// Replace y with the computed result z.
-	mm_real_realloc (y, z->nnz);
-	mm_real_memcpy (y, z);
+	if (!mm_real_realloc (y, z->nnz) || !mm_real_memcpy (y, z)) {
+		mm_real_free (z);
+		return false;
+	}
 	mm_real_free (z);
+	return true;
 }
 
 /**
@@ -2438,7 +2505,7 @@ mm_real_axpy (MM_DBL alpha, const mm_real *x, mm_real *y)
 	}
 	if (mm_real_is_sparse (x)) {
 		if (mm_real_is_sparse (y)) {
-			mm_real_asxpsy (alpha, x, y); // sparse + sparse
+			if (!mm_real_asxpsy (alpha, x, y)) return false; // sparse + sparse
 		} else {
 			mm_real_asxpdy (alpha, x, y); // sparse + dense
 		}
@@ -2465,7 +2532,8 @@ mm_real_asjpy (MM_DBL alpha, const mm_sparse *s, MM_INT j, mm_dense *y)
 	// For symmetric matrices, reconstruct the full column first.
 	if (mm_real_is_symmetric (s)) {
 		mm_dense	*s_col_j = mm_real_xj_col (s, j);
-		daxpy_ (&s_col_j->m, &alpha, s_col_j->data, &ione, y->data, &ione);
+		blas_int	m = mm_blas_int (s_col_j->m);
+		daxpy_ (&m, &alpha, s_col_j->data, &ione, y->data, &ione);
 		mm_real_free (s_col_j);
 		return;
 	}
@@ -2491,13 +2559,15 @@ mm_real_adjpy (MM_DBL alpha, const mm_dense *d, MM_INT j, mm_dense *y)
 	// For symmetric matrices, reconstruct the full column for a simple, correct operation.
 	if (mm_real_is_symmetric (d)) {
 		mm_dense	*d_col_j = mm_real_xj_col (d, j);
-		daxpy_ (&d_col_j->m, &alpha, d_col_j->data, &ione, y->data, &ione);
+		blas_int	m = mm_blas_int (d_col_j->m);
+		daxpy_ (&m, &alpha, d_col_j->data, &ione, y->data, &ione);
 		mm_real_free (d_col_j);
 		return;
 	}
 
 	// General case: a single call to BLAS daxpy is efficient and correct.
-	daxpy_ (&d->m, &alpha, d->data + j * d->m, &ione, y->data, &ione);
+	blas_int	m = mm_blas_int (d->m);
+	daxpy_ (&m, &alpha, d->data + j * d->m, &ione, y->data, &ione);
 }
 
 /**
@@ -2567,7 +2637,8 @@ mm_real_scale (mm_real *x, MM_DBL alpha)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input matrix's data array is NULL.", __FILE__, __LINE__);
 		return false;
 	}
-	dscal_ (&x->nnz, &alpha, x->data, &ione);
+	blas_int	nnz = mm_blas_int (x->nnz);
+	dscal_ (&nnz, &alpha, x->data, &ione);
 	return true;
 }
 
@@ -2596,14 +2667,14 @@ mm_real_xj_scale (mm_real *x, MM_INT j, MM_DBL alpha)
 		return false;
 	}
 
-	MM_INT	n;
+	blas_int	n;
 	MM_DBL	*data;
 	if (mm_real_is_sparse (x)) {
 		const MM_INT	p = x->p[j];
-		n = x->p[j + 1] - p;
+		n = mm_blas_int (x->p[j + 1] - p);
 		data = x->data + p;
 	} else {
-		n = x->m;
+		n = mm_blas_int (x->m);
 		data = x->data + j * x->m;
 	}
 	dscal_ (&n, &alpha, data, &ione);
@@ -2622,11 +2693,17 @@ mm_real_add (mm_real *x, MM_DBL alpha)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input object is NULL.", __FILE__, __LINE__);
 		return false;
 	}
+	if (mm_real_is_sparse (x)) {
+		report_error (MM_ERROR_NOT_IMPLEMENTED, __func__,
+			"Adding a scalar to a sparse matrix would densify it; "
+			"convert to dense first.", __FILE__, __LINE__);
+		return false;
+	}
 	if (x->data == NULL && x->nnz > 0) {
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input matrix's data array is NULL.", __FILE__, __LINE__);
 		return false;
 	}
-	for (size_t k = 0; k < x->nnz; k++) x->data[k] += alpha;
+	for (MM_INT k = 0; k < x->nnz; k++) x->data[k] += alpha;
 	return true;
 }
 
@@ -2643,6 +2720,12 @@ mm_real_xj_add (mm_real *x, MM_INT j, MM_DBL alpha)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input object is NULL.", __FILE__, __LINE__);
 		return false;
 	}
+	if (mm_real_is_sparse (x)) {
+		report_error (MM_ERROR_NOT_IMPLEMENTED, __func__,
+			"Adding a scalar to a sparse matrix would densify it; "
+			"convert to dense first.", __FILE__, __LINE__);
+		return false;
+	}
 	if (mm_real_is_symmetric (x)) {
 		report_error (MM_ERROR_FORMAT_MISMATCH,
 			__func__, "Matrix must be general.", __FILE__, __LINE__);
@@ -2655,20 +2738,11 @@ mm_real_xj_add (mm_real *x, MM_INT j, MM_DBL alpha)
 		return false;
 	}
 
-	if (mm_real_is_sparse (x)) {
-		// Note: This operation is unusual for sparse matrices as it can create many new non-zero elements.
-		// This implementation only adds to existing non-zero elements.
-		const MM_INT	p_start = x->p[j];
-		const MM_INT	p_end = x->p[j + 1];
-		for (MM_INT k = p_start; k < p_end; k++) {
-			x->data[k] += alpha;
-		}
-	} else {
-		// For dense matrices, we add to all elements in the column.
-		for (MM_INT k = 0; k < x->m; k++) {
-			x->data[k + j * x->m] += alpha;
-		}
+	// For dense matrices, we add to all elements in the column.
+	for (MM_INT k = 0; k < x->m; k++) {
+		x->data[k + j * x->m] += alpha;
 	}
+
 	return true;
 }
 
@@ -2692,7 +2766,8 @@ mm_real_xj_add (mm_real *x, MM_INT j, MM_DBL alpha)
 static MM_DBL
 mm_real_dense_dot_dense (const mm_real *dx, const mm_real *dy)
 {
-	return ddot_ (&dx->m, dx->data, &ione, dy->data, &ione);
+	blas_int	m = mm_blas_int (dx->m);
+	return ddot_ (&m, dx->data, &ione, dy->data, &ione);
 }
 
 /**
@@ -2864,12 +2939,17 @@ mm_real_x_dot_y (bool transx, bool transy, MM_DBL alpha, const mm_real *x, const
 		char	ty = (transy) ? 'T' : 'N';
 		if (mm_real_is_dense (y)) { // === Case: DENSE * DENSE ===
 			if (!mm_real_is_symmetric (x)) { // x is General Dense
-				const MM_INT	m = z->m, n = z->n, k = (transx) ? x->m : x->n;
-				dgemm_ (&tx, &ty, &m, &n, &k, &alpha, x->data, &x->m, y->data, &y->m, &beta, z->data, &z->m);
+				blas_int	m = mm_blas_int (z->m), n = mm_blas_int (z->n),
+					k = (transx) ? mm_blas_int (x->m) : mm_blas_int (x->n);
+				blas_int	xm = mm_blas_int (x->m), ym = mm_blas_int (y->m),
+					zm = mm_blas_int (z->m);
+				dgemm_ (&tx, &ty, &m, &n, &k, &alpha, x->data, &xm, y->data, &ym, &beta, z->data, &zm);
 			} else { // x is Symmetric Dense
 				if (!transx && !transy) { // S*Y -> BLAS dsymm is efficient
 					char	side = 'L', uplo = (mm_real_is_upper (x)) ? 'U' : 'L';
-					dsymm_ (&side, &uplo, &z->m, &z->n, &alpha, x->data, &x->m, y->data, &y->m, &beta, z->data, &z->m);
+					blas_int	xm = mm_blas_int (x->m), ym = mm_blas_int (y->m),
+						zm = mm_blas_int (z->m), zn = mm_blas_int (z->n);
+					dsymm_ (&side, &uplo, &zm, &zn, &alpha, x->data, &xm, y->data, &ym, &beta, z->data, &zm);
 				} else { // S*Y' or S'*Y -> Fallback to loop of dsymv
 					// Each iteration is independent and can be parallelized.
 					#pragma omp parallel
@@ -2943,7 +3023,7 @@ mm_real_s_dot_dk (bool trans, MM_DBL alpha, const mm_sparse *s, const mm_dense *
 {
 	const MM_DBL	*y_k = y->data + k * y->m;
 	MM_DBL		*z_q = z->data + q * z->m;
-	const MM_INT	z_dim = (!trans) ? s->m : s->n;
+	const blas_int	z_dim = (!trans) ? mm_blas_int (s->m) : mm_blas_int (s->n);
 
 	// Scale the initial z vector: z = beta * z
 	if (fabs (beta - 1.0) > __DBL_EPSILON__) {
@@ -3010,11 +3090,13 @@ mm_real_d_dot_dk (bool trans, MM_DBL alpha, const mm_dense *d, const mm_dense *y
 	char			_trans = 'T', _notrans = 'N';
 
 	if (!mm_real_is_symmetric (d)) {
-		dgemv_ ((trans) ? &_trans : &_notrans, &d->m, &d->n, &alpha, d->data, &d->m, y_k, &ione, &beta, z_l, &ione);
+		blas_int	dm = mm_blas_int (d->m), dn = mm_blas_int (d->n);
+		dgemv_ ((trans) ? &_trans : &_notrans, &dm, &dn, &alpha, d->data, &dm, y_k, &ione, &beta, z_l, &ione);
 	} else {
 		// For symmetric matrix-vector multiply, transpose is irrelevant (A'v = Av).
 		char uplo = (mm_real_is_upper (d)) ? 'U' : 'L';
-		dsymv_ (&uplo, &d->m, &alpha, d->data, &d->m, y_k, &ione, &beta, z_l, &ione);
+		blas_int	dm = mm_blas_int (d->m);
+		dsymv_ (&uplo, &dm, &alpha, d->data, &dm, y_k, &ione, &beta, z_l, &ione);
 	}
 }
 
@@ -3062,7 +3144,11 @@ mm_real_x_dot_yk (bool trans, MM_DBL alpha, const mm_real *x, const mm_real *y, 
 			__func__, "Index k exceeds num of col of y.", __FILE__, __LINE__);
 		return false;
 	}
-	//if (z->n <= k) report_error ("mm_real_x_dot_yk", "k exceeds num of col of z.", __FILE__, __LINE__);
+	if (z->n <= k) {
+		report_error (MM_ERROR_INDEX_OUT_OF_BOUNDS, __func__,
+			"Index k exceeds num of col of z.", __FILE__, __LINE__);
+		return false;
+	}
 	if ((trans && x->m != y->m) || (!trans && x->n != y->m)) {
 		report_error (MM_ERROR_DIMENSION_MISMATCH,
 			__func__, "Inner dimensions of x and y do not match.", __FILE__, __LINE__);
@@ -3110,7 +3196,8 @@ mm_real_sj_trans_dot_dk (const mm_sparse *s, MM_INT j, const mm_dense *y, MM_INT
 	// For symmetric matrices, the most robust way is to reconstruct the full column first.
 	if (mm_real_is_symmetric(s)) {
 		mm_dense	*s_col_j = mm_real_xj_col (s, j);
-		MM_DBL	val = ddot_ (&s_col_j->m, s_col_j->data, &ione, y->data + k * y->m, &ione);
+		blas_int	m = mm_blas_int (s_col_j->m);
+		MM_DBL	val = ddot_ (&m, s_col_j->data, &ione, y->data + k * y->m, &ione);
 		mm_real_free (s_col_j);
 		return val;
 	}
@@ -3141,13 +3228,15 @@ mm_real_dj_trans_dot_dk (const mm_dense *d, MM_INT j, const mm_dense *y, MM_INT 
 	// For symmetric matrices, reconstruct the full column to ensure correctness.
 	if (mm_real_is_symmetric (d)) {
 		mm_dense	*d_col_j = mm_real_xj_col (d, j);
-		MM_DBL	val = ddot_ (&d_col_j->m, d_col_j->data, &ione, y->data + k * y->m, &ione);
+		blas_int	m = mm_blas_int (d_col_j->m);
+		MM_DBL	val = ddot_ (&m, d_col_j->data, &ione, y->data + k * y->m, &ione);
 		mm_real_free (d_col_j);
 		return val;
 	}
 	
 	// General case: a single call to BLAS ddot is efficient and correct.
-	return ddot_ (&d->m, d->data + j * d->m, &ione, y->data + k * y->m, &ione);
+	blas_int	dm = mm_blas_int (d->m);
+	return ddot_ (&dm, d->data + j * d->m, &ione, y->data + k * y->m, &ione);
 }
 
 /**
@@ -3327,7 +3416,8 @@ mm_real_sj_iamax (const mm_sparse *s, MM_INT j)
 	MM_INT	n = s->p[j + 1] - s->p[j];
 	if (n <= 0) return -1;
 	// BLAS idamax is 1-based, so we convert back to 0-based.
-	return idamax_ (&n, s->data + s->p[j], &ione) - 1;
+	blas_int	nn = mm_blas_int (n);
+	return idamax_ (&nn, s->data + s->p[j], &ione) - 1;
 }
 
 /**
@@ -3340,7 +3430,8 @@ static MM_INT
 mm_real_dj_iamax (const mm_dense *d, MM_INT j)
 {
 	if (d->m <= 0) return -1;
-	return idamax_ (&d->m, d->data + j * d->m, &ione) - 1;
+	blas_int	m = mm_blas_int (d->m);
+	return idamax_ (&m, d->data + j * d->m, &ione) - 1;
 }
 
 /**
@@ -3357,7 +3448,8 @@ mm_real_iamax (const mm_real *x)
 		return -1;
 	}
 	if (x->nnz <= 0) return -1;
-	return idamax_ (&x->nnz, x->data, &ione) - 1;
+	blas_int	nnz = mm_blas_int (x->nnz);
+	return idamax_ (&nnz, x->data, &ione) - 1;
 }
 
 /**
@@ -3391,7 +3483,8 @@ mm_real_sj_asum (const mm_sparse *s, MM_INT j)
 {
 	const MM_INT	p_start = s->p[j];
 	const MM_INT	n_in_col = s->p[j + 1] - p_start;
-	MM_DBL		asum = dasum_ (&n_in_col, s->data + p_start, &ione);
+	blas_int		n = mm_blas_int (n_in_col);
+	MM_DBL		asum = dasum_ (&n, s->data + p_start, &ione);
 
 	if (mm_real_is_symmetric (s)) {
 		// Add the contribution from the symmetric part (off-diagonal elements)
@@ -3421,7 +3514,8 @@ static MM_DBL
 mm_real_dj_asum (const mm_dense *d, MM_INT j)
 {
 	if (!mm_real_is_symmetric (d)) {
-		return dasum_ (&d->m, d->data + j * d->m, &ione);
+		blas_int	m = mm_blas_int (d->m);
+		return dasum_ (&m, d->data + j * d->m, &ione);
 	}
 
 	// For symmetric matrices, we reconstruct the full column to get the correct sum.
@@ -3571,7 +3665,8 @@ mm_real_sj_ssq (const mm_sparse *s, MM_INT j)
 	// Reconstruct the full column to get the correct sum of squares.
 	// This is inefficient but correct.
 	mm_dense	*full_col = mm_real_xj_col (s, j);
-	ssq = ddot_ (&full_col->m, full_col->data, &ione, full_col->data, &ione);
+	blas_int	m = mm_blas_int (full_col->m);
+	ssq = ddot_ (&m, full_col->data, &ione, full_col->data, &ione);
 	mm_real_free (full_col);
 	return ssq;
 }
@@ -3586,12 +3681,14 @@ static MM_DBL
 mm_real_dj_ssq (const mm_dense *d, MM_INT j)
 {
 	if (!mm_real_is_symmetric (d)) {
-		return ddot_ (&d->m, d->data + j * d->m, &ione, d->data + j * d->m, &ione);
+		blas_int	m = mm_blas_int (d->m);
+		return ddot_ (&m, d->data + j * d->m, &ione, d->data + j * d->m, &ione);
 	}
 
 	// Reconstruct the full column to get the correct sum of squares.
 	mm_dense	*full_col = mm_real_xj_col (d, j);
-	MM_DBL	ssq = ddot_ (&full_col->m, full_col->data, &ione, full_col->data, &ione);
+	blas_int	m = mm_blas_int (full_col->m);
+	MM_DBL	ssq = ddot_ (&m, full_col->data, &ione, full_col->data, &ione);
 	mm_real_free (full_col);
 	return ssq;
 }
@@ -3674,25 +3771,16 @@ static MM_DBL
 mm_real_sj_std (const mm_sparse *s, MM_INT j)
 {
 	if (s->m <= 1) return 0.0;
-
 	const MM_DBL	mean = mm_real_sj_mean (s, j);
-	MM_DBL		ssq = 0.0;
-
-	// Sum of squares for non-zero elements
-	for (MM_INT i = s->p[j]; i < s->p[j + 1]; i++) {
-		ssq += pow (s->data[i] - mean, 2.0);
+	mm_dense	*col = mm_real_xj_col (s, j);   // 対称も含め完全な列を再構成
+	if (col == NULL) return NAN;
+	MM_DBL	ssr = 0.0;
+	for (MM_INT i = 0; i < col->m; i++) {
+		MM_DBL	d = col->data[i] - mean;
+		ssr += d * d;
 	}
-	
-	// Add contribution from implicit zero elements
-	const MM_INT	non_zeros = s->p[j + 1] - s->p[j];
-	// Note: The full column sum must account for symmetric parts
-	const MM_INT	num_zeros = s->m - non_zeros; // This is an approximation for symmetric case
-	ssq += (MM_DBL) num_zeros * pow (0.0 - mean, 2.0);
-
-	// For symmetric case, this is complex. A full column reconstruction is needed for accuracy.
-	// This implementation provides an approximation for the symmetric case.
-	
-	return sqrt (ssq / (MM_DBL) (s->m - 1));
+	mm_real_free (col);
+	return sqrt (ssr / (MM_DBL) (s->m - 1));
 }
 
 /**
@@ -3755,72 +3843,110 @@ mm_real_xj_std (const mm_real *x, MM_INT j)
  */
 
 /**
- * @brief Reads a sparse matrix from a MatrixMarket file (Coordinate format).
- * @param fp The file pointer to read from.
+ * @brief Reads a sparse matrix from a MatrixMarket Coordinate file and
+ *        assembles it into a valid CSC structure.
+ *
+ * MatrixMarket coordinate format does not guarantee column ordering, so the
+ * (row, col, val) triplets are read into temporary buffers and scattered into
+ * CSC via a counting sort. Row indices within each column are then sorted, and
+ * duplicate (i, j) entries are summed (per the MatrixMarket convention).
+ *
+ * @param fp       The file pointer to read from.
  * @param typecode The typecode read from the banner.
- * @return A new sparse matrix object, or NULL on failure.
+ * @return A new sparse matrix in CSC format, or NULL on failure.
  */
 static mm_sparse *
 mm_real_fread_sparse (FILE *fp, MM_typecode typecode)
 {
-	MM_INT m, n, nnz;
+	MM_INT	m, n, nnz;
 	if (mm_read_mtx_crd_size (fp, &m, &n, &nnz) != 0) return NULL;
 
-	mm_sparse *s = mm_real_new (MM_REAL_SPARSE, MM_REAL_GENERAL, m, n, nnz);
+	mm_sparse	*s = mm_real_new (MM_REAL_SPARSE, MM_REAL_GENERAL, m, n, nnz);
 	if (s == NULL) return NULL; // Error is reported by mm_real_new
 
-	// MatrixMarket coordinate format gives (row, col) pairs, which we need to convert to CSC.
-	// We read column indices into a temporary buffer.
-	MM_INT	*col_indices = malloc (nnz * sizeof (MM_INT));
-	if (!col_indices) {
+	// --- Read triplets (row, col, val) in file order into temporary buffers ---
+	MM_INT	*row = malloc (nnz * sizeof (MM_INT));
+	MM_INT	*col = malloc (nnz * sizeof (MM_INT));
+	MM_DBL	*val = malloc (nnz * sizeof (MM_DBL));
+	if (row == NULL || col == NULL || val == NULL) {
+		free (row); free (col); free (val);
+		report_error (MM_ERROR_ALLOCATION_FAILED,
+			__func__, "Failed to allocate temporary triplet buffers.", __FILE__, __LINE__);
 		mm_real_free (s);
 		return NULL;
 	}
 
-	if (mm_read_mtx_crd_data (fp, m, n, nnz, s->i, col_indices, s->data, typecode) != 0) {
-		free (col_indices);
+	if (mm_read_mtx_crd_data (fp, m, n, nnz, row, col, val, typecode) != 0) {
+		free (row); free (col); free (val);
+		report_error (MM_ERROR_FILE_IO,
+			__func__, "Failed to read coordinate data.", __FILE__, __LINE__);
 		mm_real_free (s);
 		return NULL;
 	}
 
-	// Convert from 1-based Fortran indexing to 0-based C indexing.
-	for (MM_INT k = 0; k < nnz; k++) {
-		s->i[k]--;
-		col_indices[k]--;
-	}
+	// 1-based (Fortran) -> 0-based (C)
+	for (MM_INT k = 0; k < nnz; k++) { row[k]--; col[k]--; }
 
-	// Convert from Coordinate (row, col, val) to CSC format (col_ptr, row_idx, val)
-	// This simple conversion assumes the input file is not sorted by column.
-	memset (s->p, 0, (n + 1) * sizeof (MM_INT));
-	for (MM_INT k = 0; k < nnz; k++) {
-		s->p[col_indices[k] + 1]++;
-	}
-	// Create cumulative sum for column pointers
-	for (MM_INT j = 0; j < n; j++) {
-		s->p[j + 1] += s->p[j];
-	}
-	// NOTE: This simple conversion does not reorder row indices or data.
-	// For optimal performance, a sort by column would be needed first, followed by this.
-	// The current mm_real struct does not store col_indices, so we discard them. A full
-	// conversion would require a temporary copy of all data.
-
+	// --- Determine symmetric storage orientation from the first off-diagonal ---
 	if (mm_is_symmetric (typecode)) {
 		mm_real_set_symmetric (s);
-		// A simple heuristic to guess upper/lower from the first off-diagonal element.
-		// A robust implementation would check all elements.
 		for (MM_INT k = 0; k < nnz; k++) {
-			// This logic relies on the discarded col_indices; it's flawed in the original.
-			// For now, we default to the behavior of mm_real_set_symmetric (upper).
-
-			if (s->i[k] == col_indices[k] - 1) continue;
-			(s->i[k] < col_indices[k] - 1) ? mm_real_set_upper (s) : mm_real_set_lower (s);
+			if (row[k] == col[k]) continue;
+			(row[k] < col[k]) ? mm_real_set_upper (s) : mm_real_set_lower (s);
 			break;
 		}
 	}
-	free (col_indices);
-	
-	// Data should be sorted for efficient access later.
+
+	// --- Pass 1: column counts -> column pointers (prefix sum) ---
+	memset (s->p, 0, (n + 1) * sizeof (MM_INT));
+	for (MM_INT k = 0; k < nnz; k++) s->p[col[k] + 1]++;
+	for (MM_INT j = 0; j < n; j++)   s->p[j + 1] += s->p[j];
+
+	// --- Pass 2: scatter triplets into CSC using a moving write cursor ---
+	MM_INT	*next = malloc (n * sizeof (MM_INT));
+	if (next == NULL) {
+		free (row); free (col); free (val);
+		report_error (MM_ERROR_ALLOCATION_FAILED,
+			__func__, "Failed to allocate scatter cursor.", __FILE__, __LINE__);
+		mm_real_free (s);
+		return NULL;
+	}
+	memcpy (next, s->p, n * sizeof (MM_INT)); // next[j] = s->p[j]
+
+	for (MM_INT k = 0; k < nnz; k++) {
+		MM_INT	j    = col[k];
+		MM_INT	dest = next[j]++;
+		s->i[dest]    = row[k];
+		s->data[dest] = val[k];
+	}
+	free (next);
+	free (row); free (col); free (val);
+
+	// --- Sort row indices within each column (getters/bin_search require this) ---
 	mm_real_sort (s);
+
+	// --- Merge duplicate (i, j) entries by summing; compact in place ---
+	// (Omit this block if the input is guaranteed duplicate-free.)
+	{
+		MM_INT	w = 0; // write cursor in the compacted arrays
+		for (MM_INT j = 0; j < n; j++) {
+			MM_INT	col_start = s->p[j];     // original column start
+			MM_INT	col_end   = s->p[j + 1]; // original column end (not yet rewritten)
+			s->p[j] = w;                     // compacted start of column j
+			for (MM_INT k = col_start; k < col_end; ) {
+				MM_INT	r   = s->i[k];
+				MM_DBL	acc = s->data[k];
+				MM_INT	t   = k + 1;
+				while (t < col_end && s->i[t] == r) acc += s->data[t++];
+				s->i[w]    = r;   // w <= k always, so no unread data is clobbered
+				s->data[w] = acc;
+				w++;
+				k = t;
+			}
+		}
+		s->p[n] = w;
+		if (w != s->nnz) mm_real_realloc (s, w);
+	}
 
 	return s;
 }
@@ -3956,8 +4082,8 @@ mm_real_fprintf (FILE *stream, const mm_real *x, const char *format, char delim)
 		report_error (MM_ERROR_NULL_ARGUMENT, __func__, "Input object is NULL.", __FILE__, __LINE__);
 		return false;
 	}
-	for (size_t i = 0; i < x->m; i++) {
-		for (size_t j = 0; j < x->n; j++) {
+	for (MM_INT i = 0; i < x->m; i++) {
+		for (MM_INT j = 0; j < x->n; j++) {
 			fprintf (stream, format, mm_real_get (x, i, j));
 			if (j < x->n - 1) fprintf (stream, "%c", delim);
 		}
@@ -3969,13 +4095,16 @@ mm_real_fprintf (FILE *stream, const mm_real *x, const char *format, char delim)
 /**
  * @brief Helper to check the return status of fread and exit on error.
  */
-static void
-check_fread_status (size_t items_read, size_t items_expected, const char *func_name, const char *file, int line)
+static bool
+check_fread_status (size_t items_read, size_t items_expected,
+		const char *func_name, const char *file, int line)
 {
 	if (items_read != items_expected) {
-		report_error (MM_ERROR_FILE_IO, func_name, "fread failed: Unexpected end of file or read error.", file, line);
-		return;
+		report_error (MM_ERROR_FILE_IO, func_name,
+			"fread failed: unexpected end of file or read error.", file, line);
+		return false;
 	}
+	return true;
 }
 
 /**
@@ -3985,18 +4114,27 @@ static mm_sparse *
 mm_real_fread_binary_sparse (FILE *fp)
 {
 	MM_INT	m, n, nnz;
-	check_fread_status (fread (&m, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (&n, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (&nnz, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
+	if (!check_fread_status (fread (&m,   sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (&n,   sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (&nnz, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__))
+		return NULL;
 
-	mm_sparse *s = mm_real_new (MM_REAL_SPARSE, MM_REAL_GENERAL, m, n, nnz);
+	// Perform header sanity checks for untrusted input.
+	if (m <= 0 || n <= 0 || nnz < 0 || nnz > m * n) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, __func__,
+			"Invalid header (m, n, nnz) in binary file.", __FILE__, __LINE__);
+		return NULL;
+	}
+
+	mm_sparse	*s = mm_real_new (MM_REAL_SPARSE, MM_REAL_GENERAL, m, n, nnz);
 	if (s == NULL) return NULL; // Error is reported by mm_real_new
 
-	// Read entire blocks at once for efficiency
-	check_fread_status (fread (s->i, sizeof (MM_INT), nnz, fp), nnz, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (s->p, sizeof (MM_INT), n + 1, fp), n + 1, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (s->data, sizeof (MM_DBL), nnz, fp), nnz, __func__, __FILE__, __LINE__);
-	
+	if (!check_fread_status (fread (s->i,    sizeof (MM_INT), nnz,   fp), nnz,   __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (s->p,    sizeof (MM_INT), n + 1, fp), n + 1, __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (s->data, sizeof (MM_DBL), nnz,   fp), nnz,   __func__, __FILE__, __LINE__)) {
+		mm_real_free (s);
+		return NULL;
+	}
 	return s;
 }
 
@@ -4007,15 +4145,24 @@ static mm_dense *
 mm_real_fread_binary_dense (FILE *fp)
 {
 	MM_INT	m, n, nnz;
-	check_fread_status (fread (&m, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (&n, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
-	check_fread_status (fread (&nnz, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__);
+	if (!check_fread_status (fread (&m,   sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (&n,   sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__)
+	 || !check_fread_status (fread (&nnz, sizeof (MM_INT), 1, fp), 1, __func__, __FILE__, __LINE__))
+		return NULL;
 
-	mm_dense *d = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, m, n, nnz);
+	if (m <= 0 || n <= 0 || nnz != m * n) {
+		report_error (MM_ERROR_INVALID_ARGUMENT, __func__,
+			"Invalid header (m, n, nnz) in binary file.", __FILE__, __LINE__);
+		return NULL;
+	}
+
+	mm_dense	*d = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, m, n, nnz);
 	if (d == NULL) return NULL; // Error is reported by mm_real_new
 
-	check_fread_status (fread (d->data, sizeof (MM_DBL), nnz, fp), nnz, __func__, __FILE__, __LINE__);
-	
+	if (!check_fread_status (fread (d->data, sizeof (MM_DBL), nnz, fp), nnz, __func__, __FILE__, __LINE__)) {
+		mm_real_free (d);
+		return NULL;
+	}
 	return d;
 }
 
@@ -4031,11 +4178,10 @@ mm_real_fread_binary (FILE *fp)
 		report_error (MM_ERROR_FILE_IO, __func__, "File pointer is NULL.", __FILE__, __LINE__);
 		return NULL;
 	}
-	char typecode[5] = {0}; // Read 4 chars + null terminator
-	check_fread_status (fread (typecode, sizeof (char), 4, fp), 4, __func__, __FILE__, __LINE__);
-	
-	// This is a simple binary format, typecode is just for dispatching here.
-	// A more robust format would embed the full banner.
+	char	typecode[5] = {0};
+	if (!check_fread_status (fread (typecode, sizeof (char), 4, fp), 4, __func__, __FILE__, __LINE__))
+		return NULL;
+
 	return (strstr (typecode, "A")) ? mm_real_fread_binary_dense (fp) : mm_real_fread_binary_sparse (fp);
 }
 

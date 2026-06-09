@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <mmio.h>
 #include <stdbool.h>
-#include <threads.h> // C11 standard header for thread_local alias
 
 #ifdef __cplusplus
 extern "C" {
@@ -88,14 +87,6 @@ typedef enum {
 
 } MMResult;
 
-/**
- * @brief The thread-local variable to store the last error code.
- *
- * Each thread will have its own independent copy of this variable.
- * It's declared 'static' to be private to this implementation file.
- */
-static thread_local MMResult g_last_error = MM_SUCCESS;
-
 /* --- Type checking macros --- */
 #define mm_real_is_sparse(a)    mm_is_sparse((a)->typecode)
 #define mm_real_is_dense(a)     mm_is_dense((a)->typecode)
@@ -109,7 +100,7 @@ static thread_local MMResult g_last_error = MM_SUCCESS;
  *============================================================================*/
 
 /* --- 0. support program --- */
-MMResult	mm_real_get_last_error ();
+MMResult	mm_real_get_last_error (void);
 const char	*mm_result_to_string (MMResult res);
 
 /* --- 1. Creation, Destruction, and Copying --- */

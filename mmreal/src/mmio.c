@@ -258,7 +258,9 @@ int
 mm_read_mtx_crd_data (FILE *f, MM_INT M, MM_INT N, MM_INT nz, MM_INT I[], MM_INT J[],
 		MM_DBL val[], MM_typecode matcode)
 {
-	size_t	i;
+	MM_INT	i;
+	MM_INT	k = M * N;
+	i = k;
 	if (mm_is_complex (matcode)) {
 /**/
 		sprintf (fmt, "%s %s %%lg %%lg", MM_FMT, MM_FMT);
@@ -375,7 +377,7 @@ mm_write_mtx_crd (const char fname[], const MM_INT M, const MM_INT N, const MM_I
 		const MM_INT I[], const MM_INT J[], const MM_DBL val[], const MM_typecode matcode)
 {
 	FILE	*f;
-	size_t	i;
+	MM_INT	i;
 
 	if (strcmp (fname, "stdout") == 0)
 		f = stdout;
@@ -429,7 +431,7 @@ char
 *mm_strdup (const char *s)
 {
 	MM_INT	len = strlen (s);
-	char	*s2 = (char *) malloc ((len+1)*sizeof (char));
+	char		*s2 = (char *) malloc ((len+1)*sizeof (char));
 	return strcpy (s2, s);
 }
 
