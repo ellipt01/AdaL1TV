@@ -1,7 +1,7 @@
 #include <iostream>
 #include <string>
-#include <algorithm>
 #include <cstring>
+#include <errno.h>
 #include <unistd.h>
 #include <mgcal.h>
 #include <mmreal.h>
@@ -15,14 +15,13 @@
 #include "AdaL1TV.h"
 
 /****** public ******/
-AdaL1TV::AdaL1TV (const char* toolname)
+AdaL1TV::AdaL1TV (const char *toolname)
 {
 	// Extract tool name from path
-	char buf[BUFFER_SIZE_];
-	strncpy (buf, toolname, BUFFER_SIZE_);
-	char* p = strrchr (buf, '/');
-	if (p) strcpy (toolname_, ++p);
-	else strncpy (toolname_, buf, BUFFER_SIZE_);
+	const char* p = std::strrchr (toolname, '/');
+	if (p) std::strncpy (toolname_, p + 1, BUFFER_SIZE_ - 1);
+	else std::strncpy (toolname_, toolname, BUFFER_SIZE_ - 1);
+	toolname_[BUFFER_SIZE_ - 1] = '\0';
 }
 
 AdaL1TV::~AdaL1TV ()
@@ -159,36 +158,45 @@ void AdaL1TV::start_ADMM (mm_real* f, mm_real* K)
 // Parse inline parameters
 void AdaL1TV::parse_command_line_args (int argc, char** argv)
 {
-	int				solver_type_int = -1;
-	std::string	arg;
-	char			opt;
+	int	solver_type_int = -1;
+	char	*endptr;
+	char	opt;
 	while ((opt = getopt (argc, argv, ":f:l:g:c:t:s:vh")) != -1) {
 		switch (opt) {
 			case 'f':
 				infile_ = new char[BUFFER_SIZE_];
-				strncpy (infile_, optarg, BUFFER_SIZE_);
+				std::strncpy (infile_, optarg, BUFFER_SIZE_);
 				break;
 			case 'l':
-				log10_lambda_ = atof (optarg);
+				errno = 0;
+				log10_lambda_ = std::strtod (optarg, &endptr);
+				while (isspace ((unsigned char ) *endptr)) ++endptr;
+				if (errno || endptr == optarg || *endptr != '\0') {
+					throw std::runtime_error ("-l option: invalid value");
+				}
 				lambda_specified_ = true;
 				break;
 			case 'g':
-				arg = std::string (optarg);
-				if (std::count (arg.begin (), arg.end (), ':') != 3)
-					throw std::runtime_error ("-g option has to specify guide_model_fn(char):sigma(double):c1:c2");
 				guide_model_file_ = new char[256];
-				sscanf (optarg, "%256[^:]:%lf:%lf:%lf", guide_model_file_, &sigma_, &c1_, &c2_);
+				if (sscanf (optarg, "%256[^:]:%lf:%lf:%lf", guide_model_file_, &sigma_, &c1_, &c2_) != 4) {
+					throw std::runtime_error ("-g option has to specify guide_model_fn(char):sigma(double):c1:c2");
+				}
 				guide_model_file_specified_ = true;
 				break;
 			case 'c':
-				gamma_ = (double) atof (optarg);
+				errno = 0;
+				gamma_ = std::strtod (optarg, &endptr);
+				while (isspace ((unsigned char) *endptr)) ++endptr;
+				if (errno || endptr == optarg || *endptr != '\0') {
+					throw std::runtime_error ("-l option: invalid value");
+				}
 				break;
 			case 't':
 				terrain_fn_ = new char[BUFFER_SIZE_];
-				strncpy (terrain_fn_, optarg, BUFFER_SIZE_);
+				std::strncpy (terrain_fn_, optarg, BUFFER_SIZE_);
 				break;
 			case 's':
-				strncpy (settings_, optarg, BUFFER_SIZE_);
+				std::strncpy (settings_, optarg, BUFFER_SIZE_);
 				break;
 			case 'v':
 				verbose_ = true;
@@ -211,43 +219,58 @@ void AdaL1TV::parse_settings_file (FILE* fp)
 	while (fgets (buf, BUFSIZ, fp) != nullptr) {
 		if (buf[0] == '#') continue;
 		
-		const char* p = buf;
+		const char	*p = buf;
 		p = skip_blanks (p);
-		if (strlen (p) <= 1) continue;
+		if (std::strlen (p) <= 1) continue;
 
-		const char* ptr = strchr (p, ':');
+		const char	*ptr = std::strchr (p, ':');
 		if (ptr == nullptr) continue;
 		else ptr++;
 		ptr = skip_blanks (ptr);
-		if (strlen (ptr) <= 1) continue;
+		if (std::strlen (ptr) <= 1) continue;
 
+		char		*endptr;
 		switch (p[0]) {
 			// In the program, the x-, y-, and z-axes are defined to
 			// eastward, northward, and upward,
 			// and are transformed upon reading the settings file.
 			case '1':
-				sscanf (ptr, "%zu,%zu,%zu", &ny_, &nx_, &nz_);
+				if (sscanf (ptr, "%zu,%zu,%zu", &ny_, &nx_, &nz_) != 3) {
+					throw std::runtime_error ("Configuration file: entry 1: invalid format");
+				}
 				break;
 			case '2':
 				xrange_ = new double[2];
 				yrange_ = new double[2];
 				zrange_ = new double[2];
-				sscanf (ptr, "%lf,%lf,%lf,%lf,%lf,%lf",
-					  &yrange_[0], &yrange_[1], &xrange_[0], &xrange_[1], &zrange_[0], &zrange_[1]);
+				if (sscanf (ptr, "%lf,%lf,%lf,%lf,%lf,%lf",
+					&yrange_[0], &yrange_[1], &xrange_[0], &xrange_[1], &zrange_[0], &zrange_[1]) != 6) {
+					throw std::runtime_error ("Configuration file: entry 2: invalid format");
+				}
 				zrange_[0] *= -1.;
 				zrange_[1] *= -1.;
 				break;
 			case '3':
-				sscanf (ptr, "%lf,%lf,%lf,%lf", &exf_inc_, &exf_dec_, &mgz_inc_, &mgz_dec_);
+				if (sscanf (ptr, "%lf,%lf,%lf,%lf", &exf_inc_, &exf_dec_, &mgz_inc_, &mgz_dec_) != 4) {
+					throw std::runtime_error ("Configuration file: entry 3: invalid format");
+				}
 				break;
 			case '4':
-				mu_ = (double) atof (ptr);
+				errno = 0;
+				mu_ = std::strtod (ptr, &endptr);
+				while (isspace ((unsigned char) *endptr)) ++endptr;
+				if (errno || endptr == ptr || *endptr != '\0')
+					throw std::runtime_error ("Configuration file: entry 4: invalid value");
 				break;
 			case '5':
-				sscanf (ptr, "%lf,%lf,%lf", &nu_, &lower_, &upper_);
+				if (sscanf (ptr, "%lf,%lf,%lf", &nu_, &lower_, &upper_) != 3) {
+					throw std::runtime_error ("Configuration file: entry 5: invalid format");
+				}
 				break;
 			case '6':
-				sscanf (ptr, "%lf,%zu", &tolerance_, &maxiter_);
+				if (sscanf (ptr, "%lf,%zu", &tolerance_, &maxiter_) != 2) {
+					throw std::runtime_error ("Configuration file: entry 6: invalid format");
+				}
 				tol_maxiter_specified_ = true;
 				break;
 			default:
