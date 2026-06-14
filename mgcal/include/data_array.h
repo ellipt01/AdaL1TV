@@ -3,6 +3,8 @@
  *
  *  Created on: 2015/03/14
  *      Author: utsugi
+ *
+ *  Minimal version: data_array_ith_copy / data_array_copy removed.
  */
 
 #ifndef DATA_ARRAY_H_
@@ -24,9 +26,6 @@ struct s_data_array {
 
 data_array	*data_array_new (const int n);
 void		data_array_free (data_array *array);
-
-void		data_array_ith_copy (data_array *dest, int j, data_array *src, int i);
-void		data_array_copy (data_array *dest, data_array *src);
 
 #ifdef __cplusplus
 }

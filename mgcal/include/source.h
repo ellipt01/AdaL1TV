@@ -3,6 +3,8 @@
  *
  *  Created on: 2015/03/14
  *      Author: utsugi
+ *
+ *  Minimal version: set_position / set_dimension / set_magnetization removed.
  */
 
 #ifndef SOURCE_H_
@@ -33,9 +35,6 @@ int		source_append_item (source *src);
 source	*source_new (void);
 void	source_free (source *src);
 void	source_set_external (source *src, const double inc, const double dec);
-void	source_set_position (source *src, const double x, const double y, const double z);
-void	source_set_dimension (source *src, const double dx, const double dy, const double dz);
-void	source_set_magnetization (source *src, const double mgz, const double inc, const double dec);
 
 #ifdef __cplusplus
 }
