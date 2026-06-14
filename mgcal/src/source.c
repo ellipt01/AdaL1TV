@@ -3,18 +3,22 @@
  *
  *  Created on: 2015/03/14
  *      Author: utsugi
+ *
+ *  Minimal version: set_position / set_dimension / set_magnetization removed
+ *  (kernel_matrix_set writes pos/dim directly via vector3d_set).
  */
 
 #include <stdlib.h>
 
-#include "../include/vector3d.h"
-#include "private/util.h"
+#include "vector3d.h"
+#include "util.h"
 #include "source.h"
 
 static source_item *
 source_item_alloc (void)
 {
 	source_item	*item = (source_item *) malloc (sizeof (source_item));
+	if (!item) error_and_exit ("source_item_alloc", "failed to allocate source_item.", __FILE__, __LINE__);
 	item->mgz = NULL;
 	item->pos = NULL;
 	item->dim = NULL;
@@ -38,6 +42,7 @@ static source *
 source_alloc (void)
 {
 	source	*src = (source *) malloc (sizeof (source));
+	if (!src) error_and_exit ("source_alloc", "failed to allocate source.", __FILE__, __LINE__);
 	src->exf = NULL;
 	src->item = source_item_alloc ();
 	src->begin = NULL;
@@ -45,6 +50,10 @@ source_alloc (void)
 	return src;
 }
 
+/*
+ * source_new - create an empty source (external field NULL, no magnetized items).
+ * Items are added with source_append_item; free the whole source with source_free.
+ */
 source *
 source_new (void)
 {
@@ -52,6 +61,9 @@ source_new (void)
 	return src;
 }
 
+/*
+ * source_free - free a source and every item in its list, plus the external field.
+ */
 void
 source_free (source *src)
 {
@@ -69,6 +81,10 @@ source_free (source *src)
 	return;
 }
 
+/*
+ * source_set_external - set the external field direction from inclination/declination.
+ * Builds a unit vector via the geodesic-polar convention and stores it as src->exf.
+ */
 void
 source_set_external (source *src, const double inc, const double dec)
 {
@@ -76,6 +92,11 @@ source_set_external (source *src, const double inc, const double dec)
 	return;
 }
 
+/*
+ * source_append_item - append a new (empty) magnetized item to the source list.
+ * Sets src->begin on the first append and updates src->end. Returns the index
+ * of the newly appended item. Fill in pos/dim/mgz directly after appending.
+ */
 int
 source_append_item (source *src)
 {
@@ -89,28 +110,4 @@ source_append_item (source *src)
 	if (!src->begin) src->begin = src->item->next;
 	src->end = cur->next;
 	return i;
-}
-
-void
-source_set_position (source *src, const double x, const double y, const double z)
-{
-	if (src->end->pos) vector3d_free (src->end->pos);
-	src->end->pos = vector3d_new (x, y, z);
-	return;
-}
-
-void
-source_set_dimension (source *src, const double dx, const double dy, const double dz)
-{
-	if (src->end->dim) vector3d_free (src->end->dim);
-	src->end->dim = vector3d_new (dx, dy, dz);
-	return;
-}
-
-void
-source_set_magnetization (source *src, const double mgz, const double inc, const double dec)
-{
-	if (src->end->mgz) vector3d_free (src->end->mgz);
-	src->end->mgz = vector3d_new_with_geodesic_poler (mgz, inc, dec);
-	return;
 }

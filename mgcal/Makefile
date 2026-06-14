@@ -20,7 +20,7 @@ src/data_array.o \
 src/io.o \
 src/mgcal.o \
 src/source.o \
-src/private/util.o
+src/util.o
 
 TARGET_LIB = libmgcal.a
 

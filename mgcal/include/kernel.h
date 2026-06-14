@@ -3,6 +3,8 @@
  *
  *  Created on: 2015/03/14
  *      Author: utsugi
+ *
+ *  Minimal version: kernel_matrix_set / kernel_matrix only.
  */
 
 #ifndef KERNEL_H_
@@ -24,17 +26,9 @@ struct s_mgcal_func
 
 mgcal_func	*mgcal_func_new (const mgcal_theoretical func, void *data);
 void		mgcal_func_free (mgcal_func *f);
+
 void		kernel_matrix_set (double *a, const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
 double		*kernel_matrix (const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-
-void		kernel_matrix_scattered_set (double *a, const data_array *array, const scattered *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-double		*kernel_matrix_scattered (const data_array *array, const scattered *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-
-void		kernel_matrix_jth_col_set (double *a, size_t stride, size_t j, const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-double		*kernel_matrix_jth_col_vector (size_t j, const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-
-void		kernel_matrix_ith_row_set (double *a, size_t stride, size_t i, const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
-double		*kernel_matrix_ith_row_vector (size_t i, const data_array *array, const grid *g, const vector3d *mgz, const vector3d *exf, const mgcal_func *f);
 
 #ifdef __cplusplus
 }

@@ -1,6 +1,8 @@
 #ifndef GRID_H
 #define GRID_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

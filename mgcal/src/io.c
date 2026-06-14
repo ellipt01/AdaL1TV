@@ -3,6 +3,11 @@
  *
  *  Created on: 2015/03/14
  *      Author: utsugi
+ *
+ *  Hardened version:
+ *   - sprintf -> snprintf
+ *   - sscanf / strtod return values checked
+ *   - read_one_line takes a capacity limit (no buffer overrun)
  */
 
 #include <stdio.h>
@@ -11,11 +16,10 @@
 #include <string.h>
 #include <math.h>
 #include <float.h>
-
-#include "../include/vector3d.h"
+#include "vector3d.h"
 #include "data_array.h"
 #include "grid.h"
-#include "private/util.h"
+#include "util.h"
 
 typedef struct s_datalist	datalist;
 
@@ -31,6 +35,7 @@ static datalist *
 datalist_alloc (void)
 {
 	datalist	*list = (datalist *) malloc (sizeof (datalist));
+	if (!list) error_and_exit ("datalist_alloc", "failed to allocate datalist.", __FILE__, __LINE__);
 	list->next = NULL;
 	return list;
 }
@@ -62,7 +67,8 @@ fread_datalist (FILE *stream, int *n)
 		char	*p = buf;
 		if (p[0] == '#' || p[0] == '\n') continue;
 		while (p[0] == ' ' || p[0] == '\t') p++;
-		sscanf (p, "%lf\t%lf\t%lf\t%lf", &x, &y, &z, &data);
+		/* require all four fields; skip malformed lines */
+		if (sscanf (p, "%lf %lf %lf %lf", &x, &y, &z, &data) != 4) continue;
 		pp = datalist_push_back (pp, x, y, z, data);
 		count++;
 	}
@@ -82,6 +88,11 @@ datalist_free (datalist *list)
 	return;
 }
 
+/*
+ * fread_data_array - read observation data (x y z value per line) from a stream.
+ * Lines starting with '#' and malformed lines (fewer than 4 fields) are skipped.
+ * Returns a newly allocated data_array (free with data_array_free).
+ */
 data_array *
 fread_data_array (FILE *stream)
 {
@@ -106,20 +117,26 @@ fread_data_array (FILE *stream)
 		if (++k >= n) break;
 	}
 	if (cur) datalist_free (cur);
+	else if (prev) free (prev);
 	return array;
 }
 
+/*
+ * fwrite_data_array_with_data - write x/y/z from array paired with an external
+ * data vector, one record per line, using the given printf format (4 fields).
+ */
 void
 fwrite_data_array_with_data (FILE *stream, const data_array *array, const double *data, const char *format)
 {
-	size_t	i;
+	int		i;
 	char	fm[BUFSIZ];
 	if (!format) strcpy (fm, "%f %f %f %f\n");
-	else sprintf (fm, "%s\n", format);
+	else snprintf (fm, sizeof (fm), "%s\n", format);
 	for (i = 0; i < array->n; i++) fprintf (stream, fm, array->x[i], array->y[i], array->z[i], data[i]);
 	return;
 }
 
+/* fwrite_data_array - write a data_array using its own stored data values. */
 void
 fwrite_data_array (FILE *stream, const data_array *array, const char *format)
 {
@@ -130,7 +147,7 @@ fwrite_data_array (FILE *stream, const data_array *array, const char *format)
 static void
 fprintf_array (FILE *stream, const int noneline, const int n, const double *array, const char *format)
 {
-	size_t	i;
+	int		i;
 	for (i = 0; i < n; i++) {
 		fprintf (stream, format, array[i]);
 		if (i < n - 1) {
@@ -180,49 +197,64 @@ is_valid_line (char *p)
 	return true;
 }
 
-static char	buf[BUFSIZ];
+static char	linebuf[BUFSIZ];
 
 static char *
 get_valid_line_body (FILE *stream)
 {
 	char	*p = NULL;
 	while (1) {
-		if (fgets (buf, BUFSIZ, stream) == NULL) return NULL;
-		p = skip_blanks (buf);
+		if (fgets (linebuf, BUFSIZ, stream) == NULL) return NULL;
+		p = skip_blanks (linebuf);
 		if (!is_valid_line (p)) continue;
 		break;
 	}
 	return p;
 }
 
+/* parse up to cap doubles from buf; returns number actually stored */
 static int
-read_one_line (char *buf, double *x)
+read_one_line (char *buf, double *x, int cap)
 {
-	size_t	i;
+	int		i;
 	char	*p;
+	char	*endptr;
 	if (!buf) return 0;
-	for (i = 0, p = strtok (buf, " \t"); p; p = strtok (NULL, " \t")) {
-		if (p[0] != '\n' && p[0] != '\r') x[i++] = (double) atof (p);
+	for (i = 0, p = strtok (buf, " \t"); p && i < cap; p = strtok (NULL, " \t")) {
+		double	v;
+		if (p[0] == '\n' || p[0] == '\r') continue;
+		v = strtod (p, &endptr);
+		if (endptr == p) continue;	/* not a number: skip token */
+		x[i++] = v;
 	}
 	return i;
 }
 
 const char *valname[] = {"x", "dx", "y", "dy", "z", "dz"};
 
+/*
+ * fread_grid - parse a grid definition (dimensions, corner positions, per-axis
+ * coordinate and spacing arrays, optional z1 surface) from a stream. Comment ('#')
+ * and blank lines are ignored. Returns a newly allocated grid (free with grid_free).
+ */
 grid *
 fread_grid (FILE *stream)
 {
-	size_t	i, k;
+	int		i, k;
 	char	*p;
 	grid	*g;
 
 	g = (grid *) malloc (sizeof (grid));
-	g->z1 = NULL;
+	if (!g) error_and_exit ("fread_grid", "failed to allocate grid.", __FILE__, __LINE__);
+	g->x = g->y = g->z = g->z1 = NULL;
+	g->dx = g->dy = g->dz = NULL;
+	g->data = NULL;
 
 	// read dimensions
 	p = get_valid_line_body (stream);
 	if (!p) error_and_exit ("fread_grid", "cannot read grid dimension.", __FILE__, __LINE__);
-	sscanf (p, "%d %d %d", &g->nx, &g->ny, &g->nz);
+	if (sscanf (p, "%d %d %d", &g->nx, &g->ny, &g->nz) != 3)
+		error_and_exit ("fread_grid", "cannot parse grid dimension.", __FILE__, __LINE__);
 	if (g->nx <= 0 || g->ny <= 0 || g->nz <= 0)
 		error_and_exit ("fread_grid", "invalid grid dimension.", __FILE__, __LINE__);
 	g->nh = g->nx * g->ny;
@@ -231,73 +263,58 @@ fread_grid (FILE *stream)
 	// read positions
 	p = get_valid_line_body (stream);
 	if (!p) error_and_exit ("fread_grid", "read pos0: entry is empty.", __FILE__, __LINE__);
-	sscanf (p, "%lf %lf %lf", &g->xrange[0], &g->yrange[0], &g->zrange[0]);
+	if (sscanf (p, "%lf %lf %lf", &g->xrange[0], &g->yrange[0], &g->zrange[0]) != 3)
+		error_and_exit ("fread_grid", "cannot parse pos0.", __FILE__, __LINE__);
 	p = get_valid_line_body (stream);
 	if (!p) error_and_exit ("fread_grid", "read pos1: entry is empty.", __FILE__, __LINE__);
-	sscanf (p, "%lf %lf %lf", &g->xrange[1], &g->yrange[1], &g->zrange[1]);
+	if (sscanf (p, "%lf %lf %lf", &g->xrange[1], &g->yrange[1], &g->zrange[1]) != 3)
+		error_and_exit ("fread_grid", "cannot parse pos1.", __FILE__, __LINE__);
 
 	for (k = 0; k <= 5; k++) {
 		int		n = -1;
-		double	*val;
+		double	*val = NULL;
 		switch (k) {
 			case 0:
 				g->x = (double *) malloc (g->nx * sizeof (double));
-				n = g->nx;
-				val = g->x;
-				break;
+				n = g->nx; val = g->x; break;
 			case 1:
 				g->dx = (double *) malloc (g->nx * sizeof (double));
-				n = g->nx;
-				val = g->dx;
-				break;
+				n = g->nx; val = g->dx; break;
 			case 2:
 				g->y = (double *) malloc (g->ny * sizeof (double));
-				n = g->ny;
-				val = g->y;
-				break;
+				n = g->ny; val = g->y; break;
 			case 3:
 				g->dy = (double *) malloc (g->ny * sizeof (double));
-				n = g->ny;
-				val = g->dy;
-				break;
+				n = g->ny; val = g->dy; break;
 			case 4:
 				g->z = (double *) malloc (g->nz * sizeof (double));
-				n = g->nz;
-				val = g->z;
-				break;
+				n = g->nz; val = g->z; break;
 			case 5:
 				g->dz = (double *) malloc (g->nz * sizeof (double));
-				n = g->nz;
-				val = g->dz;
-				break;
+				n = g->nz; val = g->dz; break;
 			default:
 				break;
 		}
-		if (n < 0) {
-			char	msg[80];
-			sprintf (msg, "size of %s is invalid.", valname[k]);
-			error_and_exit ("fread_grid", msg, __FILE__, __LINE__);
-		}
+		if (!val) error_and_exit ("fread_grid", "failed to allocate grid array.", __FILE__, __LINE__);
 		i = 0;
 		while (i < n) {
-			char	*p = get_valid_line_body (stream);
-			if (p == NULL) break;
-			i += read_one_line (p, val + i);
+			char	*q = get_valid_line_body (stream);
+			if (q == NULL) break;
+			i += read_one_line (q, val + i, n - i);
 		}
 		if (i != n) {
 			char	msg[80];
-			sprintf (msg, "size of %s is mismatch.", valname[k]);
+			snprintf (msg, sizeof (msg), "size of %s is mismatch.", valname[k]);
 			error_and_exit ("fread_grid", msg, __FILE__, __LINE__);
 		}
-
 	}
-	// read z1
+	// read z1 (optional surface topography)
 	i = 0;
 	while (i < g->nh) {
-		char	*p = get_valid_line_body (stream);
-		if (p == NULL) break;
+		char	*q = get_valid_line_body (stream);
+		if (q == NULL) break;
 		if (!g->z1) g->z1 = (double *) malloc (g->nh * sizeof (double));
-		i += read_one_line (p, g->z1 + i);
+		i += read_one_line (q, g->z1 + i, g->nh - i);
 	}
 	if (i > 0 && i != g->nh) error_and_exit ("fread_grid", "size of z1 is mismatch.", __FILE__, __LINE__);
 
@@ -308,6 +325,7 @@ fread_grid (FILE *stream)
 
 const int	n_oneline = 10;
 
+/* fwrite_grid - write a grid definition in the format readable by fread_grid. */
 void
 fwrite_grid (FILE *stream, const grid *g)
 {
@@ -354,17 +372,18 @@ fwrite_grid (FILE *stream, const grid *g)
 	return;
 }
 
+/* fwrite_grid_to_xyz - write the center coordinate of every grid cell as x y z. */
 void
 fwrite_grid_to_xyz (FILE *stream, const grid *g, const char *format)
 {
-	size_t		n;
+	int			n;
 	vector3d	*pos;
 	char		fm[BUFSIZ];
 
 	if (!g) error_and_exit ("fwrite_grid", "grid is empty.", __FILE__, __LINE__);
 
 	if (!format) strcpy (fm, "%f %f %f\n");
-	else sprintf (fm, "%s\n", format);
+	else snprintf (fm, sizeof (fm), "%s\n", format);
 
 	pos = vector3d_new (0., 0., 0.);
 	for (n = 0; n < g->n; n++) {
@@ -375,17 +394,21 @@ fwrite_grid_to_xyz (FILE *stream, const grid *g, const char *format)
 	return;
 }
 
+/*
+ * fwrite_grid_with_data - write each cell center paired with a per-cell data value
+ * (x y z value). Passing NULL for data writes zeros. Used to export inversion models.
+ */
 void
 fwrite_grid_with_data (FILE *stream, const grid *g, const double *data, const char *format)
 {
-	size_t	n;
+	int			n;
 	vector3d	*pos;
 	char		fm[BUFSIZ];
 
 	if (!g) error_and_exit ("fwrite_grid", "grid is empty.", __FILE__, __LINE__);
 
 	if (!format) strcpy (fm, "%f %f %f %f\n");
-	else sprintf (fm, "%s\n", format);
+	else snprintf (fm, sizeof (fm), "%s\n", format);
 
 	pos = vector3d_new (0., 0., 0.);
 	for (n = 0; n < g->n; n++) {
