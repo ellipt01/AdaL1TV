@@ -363,7 +363,7 @@ void ADMM::solve_with_SMW (double coef, mm_real *b, mm_real *x)
 	mm_real_axjpy (1., b, 0, x);
 
 	// Scale by 1 / coef
-	if (coef > 1.) mm_real_xj_scale (x, 0, 1. / coef);
+	mm_real_xj_scale (x, 0, 1. / coef);
 }
 
 // Factorize matrix using Cholesky decomposition

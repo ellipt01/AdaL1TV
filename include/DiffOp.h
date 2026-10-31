@@ -40,6 +40,7 @@ public:
 
 	mm_real	*addLaplacians (const mm_real* Lx, const mm_real* Ly, const mm_real* Lz);
 
+	mm_real	*createGeomWeightedLaplacian (size_t nx, size_t ny, size_t nz, int dir, const double *w);
 protected:
 	// D = [ I; Dx; Dy; Dz ]
 	mm_real	*buildD0_ (size_t nx, size_t ny, size_t nz);

@@ -40,6 +40,8 @@ grid_alloc (void)
 	g->dy = NULL;
 	g->dz = NULL;
 
+	g->padding = -1.;
+
 	g->data = NULL;
 
 	return g;
@@ -253,11 +255,31 @@ grid_get_nth (const grid *g, const int n, vector3d *center, vector3d *dim)
 	if (!g) error_and_exit ("grid_get_nth", "grid *g is empty.", __FILE__, __LINE__);
 	if (!grid_get_index_0 (g, n, &i, &j, &k, &h)) error_and_exit ("grid_get_nth", "index invalid.", __FILE__, __LINE__);
 	if (center) {
+		double	xi = g->x[i];
+		double	yj = g->y[j];
 		double	zk = g->z[k];
-		if (g->z1) zk += g->z1[h];
-		vector3d_set (center, g->x[i], g->y[j], zk);
+		if (g->padding > 0.) {
+			if (i == 0) xi += g->padding / 2.;
+			else if (i == g->nx - 1) xi -= g->padding / 2.;
+			if (j == 0) yj += g->padding / 2.;
+			else if (j == g->ny - 1) yj -= g->padding / 2.;
+			if (k == g->nz - 1) zk += g->padding / 2.;
+		}
+		vector3d_set (center, xi, yj, zk);
 	}
-	if (dim) vector3d_set (dim, g->dx[i], g->dy[j], g->dz[k]);
+	if (dim) {
+		double	dxi = g->dx[i];
+		double	dyj = g->dy[j];
+		double	dzk = g->dz[k];
+		if (g->padding > 0.) {
+			if (i == 0) dxi -= g->padding;
+			else if (i == g->nx - 1) dxi -= g->padding;
+			if (j == 0) dyj -= g->padding;
+			else if (j == g->ny - 1) dyj -= g->padding;
+			if (k == g->nz - 1) dzk -= g->padding;
+		}
+		vector3d_set (dim, dxi, dyj, dzk);
+	}
 	return;
 }
 
@@ -277,18 +299,21 @@ grid_stretch_at_edge (grid *g, double l)
 {
 	if (!g) error_and_exit ("grid_stretch_at_edge", "grid *g is empty.", __FILE__, __LINE__);
 
+	if (l <= 0.) return;
+	g->padding = l;
+
 	/* shift outermost cell centers outward */
-	g->x[0] -= l / 2.;
-	g->x[g->nx - 1] += l / 2.;
-	g->y[0] -= l / 2.;
-	g->y[g->ny - 1] += l / 2.;
-	g->z[g->nz - 1] -= l / 2.;	/* deepest layer: downward (z up, dz < 0) */
+	g->x[0] -= g->padding / 2.;
+	g->x[g->nx - 1] += g->padding / 2.;
+	g->y[0] -= g->padding / 2.;
+	g->y[g->ny - 1] += g->padding / 2.;
+	g->z[g->nz - 1] -= g->padding / 2.;	/* deepest layer: downward (z up, dz < 0) */
 
 	/* enlarge the corresponding cell spacings */
-	g->dx[0] += l;
-	g->dx[g->nx - 1] += l;
-	g->dy[0] += l;
-	g->dy[g->ny - 1] += l;
-	g->dz[g->nz - 1] -= l;		/* more negative = thicker downward */
+	g->dx[0] += g->padding;
+	g->dx[g->nx - 1] += g->padding;
+	g->dy[0] += g->padding;
+	g->dy[g->ny - 1] += g->padding;
+	g->dz[g->nz - 1] -= g->padding;		/* more negative = thicker downward */
 	return;
 }

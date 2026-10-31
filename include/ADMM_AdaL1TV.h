@@ -19,6 +19,10 @@ class ADMM_AdaL1TV : public ADMM {
 	// Adaptive weights for differential operators (length = n)
 	double		*adap_w_ = nullptr;
 
+	size_t		nx_ = 0;
+	size_t		ny_ = 0;
+	size_t		nz_ = 0;
+
 	// Differential operators
 	mm_real		*Dx_ = nullptr;
 	mm_real		*Dy_ = nullptr;
@@ -43,8 +47,11 @@ public:
 	ADMM_AdaL1TV (size_t m, size_t n, double log10_lambda);
 	~ADMM_AdaL1TV ();
 
-	// Set adaptive weighting parameter gamma and initial model
-	void		setAdaptiveWeighting (double sigma, double gamma, const mm_real *guide_model, const double c1 = 0.1, const double c2 = 0.01);
+	// Set adaptive weighting parameter contrast and initial model
+	// gamma is computed by gamma = log(contrast) / (M / (c1 * sigma)) automatically,
+	// where M is median of non-zero model parameters
+	void		setAdaptiveWeighting (double contrast, double sigma, const mm_real *guide_model,
+				const double c1 = 0.1, const double c2 = 0.01);
 
 	// Set TV regularization parameters and differential operators
 	void		setTVRegularization (double mu, size_t nx, size_t ny, size_t nz);

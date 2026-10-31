@@ -52,6 +52,7 @@ $(BLAS_LIB) \
 # Objects
 # =========================================
 COMMON_OBJS = \
+src/AdaL1TVOpts.o \
 src/L1L2.o \
 src/ADMM.o \
 src/MagKernel.o \

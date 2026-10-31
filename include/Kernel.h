@@ -37,8 +37,8 @@ public:
 	// boundary_extension: additional margin added to the model space
 	//                     to extend the edges of the computational domain.
 	void		setRange (size_t nx, size_t ny, size_t nz,
-				     double *xx, double *yy, double *zz,
-				     const double boundary_extension = 0.);
+				     const double *xx, const double *yy, const double *zz,
+				     double boundary_extension = 0.);
 
 	// Set the surface topography of the model
 	void		setSurface (double *zsurf) { grid_set_surface (grd_, zsurf); }

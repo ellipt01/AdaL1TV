@@ -1,6 +1,9 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <stdexcept>
 #include <errno.h>
 #include <unistd.h>
 #include <mgcal.h>
@@ -15,299 +18,90 @@
 #include "AdaL1TV.h"
 
 /****** public ******/
-AdaL1TV::AdaL1TV (const char *toolname)
+
+// Export recovered anomaly and model (+ regularization vector)
+void
+AdaL1TV::exportResults (const char *ofn_model, const char *ofn_recovered)
 {
-	// Extract tool name from path
-	const char* p = std::strrchr (toolname, '/');
-	if (p) std::strncpy (toolname_, p + 1, BUFFER_SIZE_ - 1);
-	else std::strncpy (toolname_, toolname, BUFFER_SIZE_ - 1);
-	toolname_[BUFFER_SIZE_ - 1] = '\0';
-}
+	// model / recovered anomaly は基底に任せる
+	L1L2::exportResults (ofn_model, ofn_recovered);
 
-AdaL1TV::~AdaL1TV ()
-{
-	if (admm_) delete admm_;
-}
-
-void AdaL1TV::printUsage ()
-{
-	fprintf (stderr, "USAGE: %s\n", toolname_);
-	fprintf (stderr, "       -f <input_file>\n");
-	fprintf (stderr, "       -l <log10(lambda)>   regularization parameter\n");
-	fprintf (stderr, "[optional arguments]\n");
-	fprintf (stderr, "       -g <guide_model_file>:<sigma>:<c1>:<c2>\n");
-	fprintf (stderr, "           guide_model_file : guide model in mm_real format\n");
-	fprintf (stderr, "           sigma            : regularization parameter (lambda) used to derive guide model\n");
-	fprintf (stderr, "           c1, c2           : coefficients for defining the active set\n");
-	fprintf (stderr, "       -c <weight_exponent> (default: 1)\n");
-	fprintf (stderr, "       -t <terrain_file>    (default: terrain.in)\n");
-	fprintf (stderr, "       -s <settings_file>   (default: settings.par)\n");
-	fprintf (stderr, "       -v                   verbose mode\n");
-	fprintf (stderr, "       -h                   show this message>\n");
-}
-
-// Initialize AdaL1TV object from command-line arguments
-void AdaL1TV::initializeFromArgs (int argc, char** argv)
-{
-	// Parse inline parameters
-	parse_command_line_args (argc, argv);
-	validate_inline_params ();
-
-	// Parse settings file
-	FILE* fp = fopen (settings_, "r");
-	if (!fp) throw std::runtime_error ("cannot open specified settings file " + std::string (settings_));
-	parse_settings_file (fp);
-	fclose (fp);
-	validate_settings ();
-
-	// Print settings to stderr
-	export_settings (stderr);
-}
-
-// Perform ADMM iteration
-void AdaL1TV::solve ()
-{
-	// Read input data file
-	FILE* fp = fopen (infile_, "r");
-	if (!fp) throw std::runtime_error ("cannot open specified input file " + std::string (infile_));
-	data_ = fread_data_array (fp);
-	for (size_t i = 0; i < data_->n; i++) data_->z[i] *= -1.;
-	fclose (fp);
-
-	f_ = mm_real_view_array (MM_REAL_DENSE, MM_REAL_GENERAL, data_->n, 1, data_->n, data_->data);
-
-	// Compute sensitivity matrix
-	magker_ = new MagKernel (exf_inc_, exf_dec_, mgz_inc_, mgz_dec_);
-	magker_->setRange (nx_, ny_, nz_, xrange_, yrange_, zrange_, 1000.);
-	if (terrain_fn_) set_terrain (terrain_fn_);
-	magker_->setData (data_);
-	K_ = magker_->getKernel ();
-
-	// Start ADMM iteration
-	start_ADMM (f_, K_);
-}
-
-// Export recovered anomaly and model
-void AdaL1TV::exportResults (const char* ofn_model, const char* ofn_recovered)
-{
-	FILE* fp;
-
-	// Export model
-	fp = fopen (ofn_model, "w");
-	if (!fp)
-		throw std::runtime_error ("cannot open file " + std::string (ofn_model) + " to export derived model.");
-
-	mm_real	*beta = admm_->getModel ();
-	grid		*g = magker_->getGrid ();
-	vector3d	*pos = vector3d_new (0., 0., 0.);
-	for (size_t n = 0; n < g->n; n++) {
-		grid_get_nth (g, n, pos, NULL);
-		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e\n", pos->x, pos->y, - pos->z, beta->data[n]);
-	}
-	fclose (fp);
-	vector3d_free (pos);
-	mm_real_free (beta);
-
-	// Export recovered anomaly
-	mm_real* h = admm_->recover ();
-	fp = fopen (ofn_recovered, "w");
-	if (!fp)
-		throw std::runtime_error ("cannot open file " + std::string (ofn_recovered) + " to export recovered anomaly.");
-
-	for (size_t i = 0; i < data_->n; i++) {
-		fprintf (fp, "%.4e\t%.4e\t%.4e\t%.6e\n", data_->x[i], data_->y[i], -data_->z[i], h->data[i]);
-	}
-	fclose (fp);
-	mm_real_free (h);
-
-	mm_real	*d = admm_->getRegularizationVector ();
-	fp = fopen ("regularization.vec", "w");
+	// admm_ は start_ADMM で必ず ADMM_AdaL1TV を入れているので static_cast で安全
+	ADMM_AdaL1TV	*a = static_cast<ADMM_AdaL1TV *> (admm_);
+	mm_real		*d = a->getRegularizationVector ();
+	FILE			*fp = fopen ("regularization.vec", "w");
 	if (fp) {
 		mm_real_fwrite (fp, d, "%.6e");
 		fclose (fp);
+	} else {
+		std::cerr << "WARNING: cannot open regularization.vec for writing" << std::endl;
 	}
 }
 
+/****** protected ******/
+
 // Start ADMM iteration until convergence
-void AdaL1TV::start_ADMM (mm_real* f, mm_real* K)
+void
+AdaL1TV::start_ADMM (mm_real *f, mm_real *K)
 {
 	size_t m = f->m;
 	size_t n = K->n;
 
-	admm_ = new ADMM_AdaL1TV (m, n, log10_lambda_);
+	ADMM_AdaL1TV	*a = new ADMM_AdaL1TV (m, n, opts_.log10_lambda);
+	admm_ = a;		// 基底の ADMM * に格納(delete は基底のデストラクタ)
 
-	if (verbose_) admm_->setVerbose ();
+	if (opts_.verbose) a->setVerbose ();
 
-	admm_->setupLinearSystem (f, K, true);
-	admm_->setTVRegularization (mu_, nx_, ny_, nz_);
-	if (nu_ > 0.) admm_->setBoundConstraint (nu_, lower_, upper_);
-	if (guide_model_file_specified_) {
-		FILE* fp = fopen (guide_model_file_, "r");
+	a->setupLinearSystem (f, K, true);
+	a->setTVRegularization (opts_.mu, opts_.nx, opts_.ny, opts_.nz);
+	if (opts_.nu > 0.) a->setBoundConstraint (opts_.nu, opts_.lower, opts_.upper);
+
+	if (!aopts_.guidefn.empty ()) {
+		FILE *fp = fopen (aopts_.guidefn.c_str (), "r");
 		if (!fp)
-			throw std::runtime_error ("cannot open specified guide model file " + std::string (guide_model_file_));
-		mm_real* guide_model = mm_real_fread (fp);
+			throw std::runtime_error ("cannot open specified guide model file " + aopts_.guidefn);
+		mm_real *guide_model = mm_real_fread (fp);
 		fclose (fp);
-		admm_->setAdaptiveWeighting (sigma_, gamma_, guide_model, c1_, c2_);
+		if (!guide_model)
+			throw std::runtime_error ("cannot read guide model file " + aopts_.guidefn);
+		a->setAdaptiveWeighting (aopts_.contrast, aopts_.sigma, guide_model, aopts_.c1, aopts_.c2);
 		mm_real_free (guide_model);
 	}
-	size_t niter = admm_->solve (maxiter_, tolerance_);
-	fprintf (stderr, "residual[%04zu] = %.4e / %.4e\n", niter, admm_->getResiduals (), tolerance_);
-}
 
-/****** protected ******/
-// Parse inline parameters
-void AdaL1TV::parse_command_line_args (int argc, char** argv)
-{
-	int	solver_type_int = -1;
-	char	*endptr;
-	char	opt;
-	while ((opt = getopt (argc, argv, ":f:l:g:c:t:s:vh")) != -1) {
-		switch (opt) {
-			case 'f':
-				infile_ = new char[BUFFER_SIZE_];
-				std::strncpy (infile_, optarg, BUFFER_SIZE_);
-				break;
-			case 'l':
-				errno = 0;
-				log10_lambda_ = std::strtod (optarg, &endptr);
-				while (isspace ((unsigned char ) *endptr)) ++endptr;
-				if (errno || endptr == optarg || *endptr != '\0') {
-					throw std::runtime_error ("-l option: invalid value");
-				}
-				lambda_specified_ = true;
-				break;
-			case 'g':
-				guide_model_file_ = new char[256];
-				if (sscanf (optarg, "%256[^:]:%lf:%lf:%lf", guide_model_file_, &sigma_, &c1_, &c2_) != 4) {
-					throw std::runtime_error ("-g option has to specify guide_model_fn(char):sigma(double):c1:c2");
-				}
-				guide_model_file_specified_ = true;
-				break;
-			case 'c':
-				errno = 0;
-				gamma_ = std::strtod (optarg, &endptr);
-				while (isspace ((unsigned char) *endptr)) ++endptr;
-				if (errno || endptr == optarg || *endptr != '\0') {
-					throw std::runtime_error ("-l option: invalid value");
-				}
-				break;
-			case 't':
-				terrain_fn_ = new char[BUFFER_SIZE_];
-				std::strncpy (terrain_fn_, optarg, BUFFER_SIZE_);
-				break;
-			case 's':
-				std::strncpy (settings_, optarg, BUFFER_SIZE_);
-				break;
-			case 'v':
-				verbose_ = true;
-				break;
-			case 'h':
-				printUsage ();
-				exit (1);
-			default:
-				throw std::runtime_error ("unknown option.");
-				break;
-		}
-	}
-}
-
-// Parse parameter specifications from settings file
-void AdaL1TV::parse_settings_file (FILE* fp)
-{
-	char buf[BUFSIZ];
-
-	while (fgets (buf, BUFSIZ, fp) != nullptr) {
-		if (buf[0] == '#') continue;
-		
-		const char	*p = buf;
-		p = skip_blanks (p);
-		if (std::strlen (p) <= 1) continue;
-
-		const char	*ptr = std::strchr (p, ':');
-		if (ptr == nullptr) continue;
-		else ptr++;
-		ptr = skip_blanks (ptr);
-		if (std::strlen (ptr) <= 1) continue;
-
-		char		*endptr;
-		switch (p[0]) {
-			// In the program, the x-, y-, and z-axes are defined to
-			// eastward, northward, and upward,
-			// and are transformed upon reading the settings file.
-			case '1':
-				if (sscanf (ptr, "%zu,%zu,%zu", &ny_, &nx_, &nz_) != 3) {
-					throw std::runtime_error ("Configuration file: entry 1: invalid format");
-				}
-				break;
-			case '2':
-				xrange_ = new double[2];
-				yrange_ = new double[2];
-				zrange_ = new double[2];
-				if (sscanf (ptr, "%lf,%lf,%lf,%lf,%lf,%lf",
-					&yrange_[0], &yrange_[1], &xrange_[0], &xrange_[1], &zrange_[0], &zrange_[1]) != 6) {
-					throw std::runtime_error ("Configuration file: entry 2: invalid format");
-				}
-				zrange_[0] *= -1.;
-				zrange_[1] *= -1.;
-				break;
-			case '3':
-				if (sscanf (ptr, "%lf,%lf,%lf,%lf", &exf_inc_, &exf_dec_, &mgz_inc_, &mgz_dec_) != 4) {
-					throw std::runtime_error ("Configuration file: entry 3: invalid format");
-				}
-				break;
-			case '4':
-				errno = 0;
-				mu_ = std::strtod (ptr, &endptr);
-				while (isspace ((unsigned char) *endptr)) ++endptr;
-				if (errno || endptr == ptr || *endptr != '\0')
-					throw std::runtime_error ("Configuration file: entry 4: invalid value");
-				break;
-			case '5':
-				if (sscanf (ptr, "%lf,%lf,%lf", &nu_, &lower_, &upper_) != 3) {
-					throw std::runtime_error ("Configuration file: entry 5: invalid format");
-				}
-				break;
-			case '6':
-				if (sscanf (ptr, "%lf,%zu", &tolerance_, &maxiter_) != 2) {
-					throw std::runtime_error ("Configuration file: entry 6: invalid format");
-				}
-				tol_maxiter_specified_ = true;
-				break;
-			default:
-				throw std::runtime_error ("unexpected identifier.");
-		}
-	}
+	size_t niter = a->solve (opts_.maxiter, opts_.tolerance);
+	fprintf (stderr, "residual[%04zu] = %.4e / %.4e\n", niter, a->getResiduals (), opts_.tolerance);
 }
 
 // Export settings to stream
-void AdaL1TV::export_settings (FILE* stream)
+void
+AdaL1TV::export_settings (FILE *stream)
 {
+	const bool	adaptive = !aopts_.guidefn.empty ();
+
 	fprintf (stream, "#################################################################\n");
-	fprintf (stream, "# *** penalty type: %s ***\n", (guide_model_file_specified_) ? "AdaL1TV" : "L1TV");
+	fprintf (stream, "# *** penalty type: %s ***\n", adaptive ? "AdaL1TV" : "L1TV");
 	fprintf (stream, "# \n");
-	fprintf (stream, "# num of grid cells:nx, ny, nz: %zu, %zu, %zu\n", ny_, nx_, nz_);
+	fprintf (stream, "# num of grid cells:nx, ny, nz: %d, %d, %d\n", opts_.nx, opts_.ny, opts_.nz);
 	fprintf (stream, "# range of the model space:\n");
-	fprintf (stream, "#    x range (south-north):     [%.2f, %.2f]\n", yrange_[0], yrange_[1]);
-	fprintf (stream, "#    y range (west-east):       [%.2f, %.2f]\n", xrange_[0], xrange_[1]);
-	fprintf (stream, "#    z range (top-bottom):      [%.2f, %.2f]\n", -zrange_[0], -zrange_[1]);
+	fprintf (stream, "#    x range (south-north):     [%.2f, %.2f]\n", opts_.yy[0], opts_.yy[1]);
+	fprintf (stream, "#    y range (west-east):       [%.2f, %.2f]\n", opts_.xx[0], opts_.xx[1]);
+	fprintf (stream, "#    z range (top-bottom):      [%.2f, %.2f]\n", - opts_.zz[0], - opts_.zz[1]);
 	fprintf (stream, "# exf. and mag. inc, dec.:      %.2f, %.2f, %.2f, %.2f\n",
-		   exf_inc_, exf_dec_, mgz_inc_, mgz_dec_);
-	fprintf (stream, "# tolerance and num of maxiter: %.2e, %zu\n", tolerance_, maxiter_);
-	fprintf (stream, "# penalty parameter:mu:         %.2f\n", mu_);
-	fprintf (stream, "# penalty parameter:nu:         %.2f\n", nu_);
-	if (nu_ > 0.) {
-		fprintf (stream, "# upper and lower bounds:       %.2f. %.2f\n", lower_, upper_);
+		opts_.exf_inc, opts_.exf_dec, opts_.mgz_inc, opts_.mgz_dec);
+	fprintf (stream, "# tolerance and num of maxiter: %.2e, %zu\n", opts_.tolerance, opts_.maxiter);
+	fprintf (stream, "# penalty parameter:mu:         %.2f\n", opts_.mu);
+	fprintf (stream, "# penalty parameter:nu:         %.2f\n", opts_.nu);
+	if (opts_.nu > 0.) {
+		fprintf (stream, "# lower and upper bounds:       %.2f, %.2f\n", opts_.lower, opts_.upper);
 	}
 	fprintf (stream, "# \n");
-	fprintf (stream, "# input anomaly data file name: %s\n", infile_);
-	fprintf (stream, "# settings file name:           %s\n", settings_);
-	fprintf (stream, "# log10(lambda):                %.4f\n", log10_lambda_);
-	fprintf (stream, "# apply adaptive weighting:     %s\n", (guide_model_file_specified_) ? "true" : "false");
-	if (guide_model_file_specified_) {
-		fprintf (stream, "# guide model file name:        %s\n", guide_model_file_);
-		fprintf (stream, "# gamma:                        %.3f\n", gamma_);
+	fprintf (stream, "# input anomaly data file name: %s\n", opts_.infn.c_str ());
+	fprintf (stream, "# log10(lambda):                %.4f\n", opts_.log10_lambda);
+	fprintf (stream, "# apply adaptive weighting:     %s\n", adaptive ? "true" : "false");
+	if (adaptive) {
+		fprintf (stream, "# guide model file name:        %s\n", aopts_.guidefn.c_str ());
+		fprintf (stream, "# penalty contrast:             %.3f\n", aopts_.contrast);
 	}
-	fprintf (stream, "# verbose mode:                 %s\n", (verbose_) ? "true" : "false");
+	fprintf (stream, "# verbose mode:                 %s\n", opts_.verbose ? "true" : "false");
 	fprintf (stream, "#################################################################\n");
 }
-

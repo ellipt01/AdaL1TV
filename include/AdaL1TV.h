@@ -1,48 +1,34 @@
-#ifndef _ADA_L1_TV_H_
-#define _ADA_L1_TV_H_
+#ifndef ADA_L1_TV_H_
+#define ADA_L1_TV_H_
+
+#include <cstdio>
+#include "Kernel.h"
+#include "MagKernel.h"
+#include "ADMM.h"
+#include "ADMM_AdaL1TV.h"
+#include "AdaL1TVOpts.h"
+#include "L1L2.h"
 
 // Adaptive L1 Total Variation (TV) inversion class
 // Derived from the L1L2 inversion framework
 class AdaL1TV : public L1L2 {
 
-	/*** Inversion parameters and objects ***/
-	ADMM_AdaL1TV	*admm_ = nullptr;   // ADMM solver for adaptive L1-TV
-
-	// Guide model file for adaptive weighting
-	bool			guide_model_file_specified_ = false;
-	char			*guide_model_file_ = nullptr;  // File name of the guide model
-	// scaling factor s is determined as followings:
-	// s1 = median ( |beta_j| > c1 * sigma),
-	// s2 = median ( |D*beta_j| > c2 * sigma),
-	double		c1_ = 0.1;
-	double		c2_ = 0.01;
-	double		sigma_ = 1.;		// Scale parameter for adaptive weight
-	double		gamma_ = 1.;          // Adaptive weighting parameter
-	bool			use_unweighted_L1_guide_ = false;
+	const AdaL1TVOpts	&aopts_;   // 型付きの設定参照(基底の opts_ とは別名)
 
 public:
-	AdaL1TV (const char *toolname);  // Constructor with tool name
-	~AdaL1TV ();
+	explicit AdaL1TV (const AdaL1TVOpts &opts) : L1L2 (opts), aopts_ (opts) {}
+	~AdaL1TV () override = default;   // admm_ は基底が delete
 
-	void			printUsage ();  // Print usage/help message
+	AdaL1TV (const AdaL1TV &) = delete;
+	AdaL1TV &operator= (const AdaL1TV &) = delete;
 
-	void			initializeFromArgs (int argc, char **argv);  // Initialize from command-line arguments
-	void			solve ();  // Run inversion
-
-	void			exportResults (const char *ofn_model, const char *ofn_recovered);  // Export results to files
-	void			exportResults () { exportResults ("model.data", "recovered.data"); }  // Default export
-
-	mm_real		*getModel (bool remove_weight) { return admm_->getModel (remove_weight); }  // Get estimated model
+	// regularization.vec も出力する
+	void exportResults (const char *ofn_model, const char *ofn_recovered) override;
+	using L1L2::exportResults;        // 引数なし版を隠さない
 
 protected:
-	void			parse_command_line_args (int argc, char **argv);  // Parse command-line arguments
-	void			parse_settings_file (FILE *fp);  // Parse settings file
-
-	void			start_ADMM (mm_real *f, mm_real *K);  // Start ADMM solver
-
-	void			export_settings (FILE *stream);  // Export settings to file
+	void start_ADMM (mm_real *f, mm_real *K) override;
+	void export_settings (FILE *stream) override;
 };
 
-
-#endif // _ADA_L1_TV_H_
-
+#endif // ADA_L1_TV_H_

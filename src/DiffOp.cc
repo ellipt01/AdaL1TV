@@ -921,3 +921,42 @@ DiffOp::addLaplacians (const mm_real* Lx, const mm_real* Ly, const mm_real* Lz)
 
 	return L;
 }
+
+// L = (Ws D W^-1)^T (Ws D W^-1) for one direction (dir = 0: x, 1: y, 2: z)
+// Ws: geometric mean of the sensitivity weights of adjacent cells (same rule as row_scale)
+mm_real *
+DiffOp::createGeomWeightedLaplacian (size_t nx, size_t ny, size_t nz, int dir, const double *w)
+{
+	const size_t	n = nx * ny * nz;
+	const size_t	stride = (dir == 0) ? 1 : (dir == 1) ? nx : nx * ny;
+	const size_t	len    = (dir == 0) ? nx : (dir == 1) ? ny : nz;
+
+	// squared edge weight of row r: ws_r^2
+	auto ws2 = [&] (size_t r) {
+		const size_t	pos = (r / stride) % len;
+		return (pos + 1 < len) ? w[r] * w[r + stride] : w[r] * w[r];
+	};
+
+	mm_real	*L = mm_real_new (MM_REAL_SPARSE, MM_REAL_GENERAL, n, n, 3 * n);
+	size_t	p = 0;
+	L->p[0] = 0;
+	for (size_t m = 0; m < n; m++) {
+		const size_t	pos = (m / stride) % len;
+		double	diag = ws2 (m) / (w[m] * w[m]);	// own row (edge m -> m+stride, or boundary row)
+		if (pos > 0) {
+			const size_t	q = m - stride;	// row q: edge q -> m
+			L->i[p] = q;
+			L->data[p++] = - ws2 (q) / (w[q] * w[m]);
+			diag += ws2 (q) / (w[m] * w[m]);
+		}
+		L->i[p] = m;
+		L->data[p++] = diag;
+		if (pos + 1 < len) {
+			L->i[p] = m + stride;
+			L->data[p++] = - ws2 (m) / (w[m] * w[m + stride]);
+		}
+		L->p[m + 1] = p;
+	}
+	if (p != L->nnz) mm_real_realloc (L, p);
+	return L;
+}

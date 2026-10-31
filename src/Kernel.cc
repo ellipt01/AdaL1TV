@@ -18,7 +18,7 @@ Kernel::~Kernel ()
 // xx, yy, zz : coordinate arrays
 // ll : optional stretching factor at the grid edges (default = 0)
 void
-Kernel::setRange (size_t nx, size_t ny, size_t nz, double *xx, double *yy, double *zz, const double ll)
+Kernel::setRange (size_t nx, size_t ny, size_t nz, const double *xx, const double *yy, const double *zz, double ll)
 {
 	nx_ = nx;
 	ny_ = ny;

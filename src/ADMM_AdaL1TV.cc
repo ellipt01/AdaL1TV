@@ -50,7 +50,12 @@ ADMM_AdaL1TV::setTVRegularization (double mu, size_t nx, size_t ny, size_t nz)
 	if (mu <= std::numeric_limits<double>::epsilon ())
 		throw std::runtime_error ("Invalid parameter mu: must be greater than zero.");
 
-	if (nx * ny * nz != n_) throw std::runtime_error ("Dimension mismatch: differential operators must have column size = n.");
+	nx_ = nx;
+	ny_ = ny;
+	nz_ = nz;
+
+	if (nx_ * ny_ * nz_ != n_)
+		throw std::runtime_error ("Dimension mismatch: differential operators must have column size = n.");
 
 	if (diff_ == nullptr) diff_ = new DiffOp ();
 
@@ -63,6 +68,7 @@ ADMM_AdaL1TV::setTVRegularization (double mu, size_t nx, size_t ny, size_t nz)
 	Dz_ = diff_->createDiffZ (nx, ny, nz);
 
 	// Apply optional weighting to differential operators
+	// Construct Ws * D * invW, Ws: geometric mean of sensitivity
 	if (w_) {
 #pragma omp parallel for
 		for (size_t j = 0; j < n_; j++) {
@@ -70,21 +76,48 @@ ADMM_AdaL1TV::setTVRegularization (double mu, size_t nx, size_t ny, size_t nz)
 			mm_real_xj_scale (Dy_, j, 1. / w_->data[j]);
 			mm_real_xj_scale (Dz_, j, 1. / w_->data[j]);
 		}
+		// row scaling: D -> Ws * D, Ws = geometric mean of adjacent sensitivity weights
+		auto row_scale = [&] (mm_real *D, size_t stride, size_t len) {
+	#pragma omp parallel for
+			for (size_t j = 0; j < D->n; j++) {
+				for (size_t p = D->p[j]; p < D->p[j + 1]; p++) {
+					const size_t	r = D->i[p];	// row r: edge r -> r + stride (or boundary row)
+					const size_t	pos = (r / stride) % len;
+					const double	ws = (pos + 1 < len) ? std::sqrt (w_->data[r] * w_->data[r + stride]) : w_->data[r];
+					D->data[p] *= ws;
+				}
+			}
+		};
+		row_scale (Dx_, 1,   nx_);
+		row_scale (Dy_, nx_, ny_);
+		row_scale (Dz_, nx_ * ny_,  nz_);
 	}
 
 	// Construct (weighted) Laplacian P_ = Dx.T * Dx + Dy.T * Dy + Dz.T * Dz
 	mm_real	*Lx; // = Dx.T * Dx
 	mm_real	*Ly; // = Dy.T * Dy
 	mm_real	*Lz; // = Dz.T * Dz
+/*
 	if (w_) {
 		Lx = diff_->createColWeightedLaplacianX (nx, ny, nz, w_->data);
 		Ly = diff_->createColWeightedLaplacianY (nx, ny, nz, w_->data);
 		Lz = diff_->createColWeightedLaplacianZ (nx, ny, nz, w_->data);
 	} else {
-		Lx = diff_->createLaplacianX (nx, ny, nz);
-		Ly = diff_->createLaplacianY (nx, ny, nz);
-		Lz = diff_->createLaplacianZ (nx, ny, nz);
+		Lx = diff_->createLaplacianX (nx_, ny_, nz_);
+		Ly = diff_->createLaplacianY (nx_, ny_, nz_);
+		Lz = diff_->createLaplacianZ (nx_, ny_, nz_);
 	}
+*/
+	if (w_) {
+		Lx = diff_->createGeomWeightedLaplacian (nx_, ny_, nz_, 0, w_->data);
+		Ly = diff_->createGeomWeightedLaplacian (nx_, ny_, nz_, 1, w_->data);
+		Lz = diff_->createGeomWeightedLaplacian (nx_, ny_, nz_, 2, w_->data);
+	} else {
+		Lx = diff_->createLaplacianX (nx_, ny_, nz_);
+		Ly = diff_->createLaplacianY (nx_, ny_, nz_);
+		Lz = diff_->createLaplacianZ (nx_, ny_, nz_);
+	}
+	if (P_) mm_real_free (P_);
 	P_ = diff_->addLaplacians (Lx, Ly, Lz);
 	mm_real_free (Lx);
 	mm_real_free (Ly);
@@ -161,12 +194,11 @@ ADMM_AdaL1TV::solve (size_t maxiter, double tol)
 // s is a median of the active set:
 //     | beta_guide | < c1 * sigma, | D * beta_guide | < c2 * sigma
 void
-ADMM_AdaL1TV::setAdaptiveWeighting (double sigma, double gamma, const mm_real *guide_model, const double c1, const double c2)
+ADMM_AdaL1TV::setAdaptiveWeighting (double contrast, double sigma, const mm_real *guide_model, const double c1, const double c2)
 {
 	if (guide_model->m != n_)
 		throw std::runtime_error ("size of guide model incompatible.");
 
-	double	eps = 1.e-3;
 	if (adap_w_) delete [] adap_w_;
 	size_t	size = k_ * n_;
 	adap_w_ = new double [size];
@@ -185,19 +217,22 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double sigma, double gamma, const mm_real *g
 		if (absd[i] <= c1 * sigma) break;
 		count++;
 	}
-	if (count == 0) throw std::runtime_error ("No elements exceed the threshold (c1 * sigma). Cannot compute median.");
+	if (count == 0)
+		throw std::runtime_error ("No elements exceed the threshold (c1 * sigma). Cannot compute median.");
 	double	median = absd[count / 2];
-	if (median <= 0.) median = c1 * sigma;
-	// Adaptive weighting for |D * beta | based on | D * beta* |
+
+	double	gamma0 = std::log (contrast) / std::log (median / (c1 * sigma));
+	std::cout << "0: count = " << count << ", median = " << median << ", eps = "
+	<< c1 * sigma << ", gamma0 = " << gamma0 << std::endl;
+
+	// Adaptive weighting for | beta |
 #pragma omp parallel for
 	for (size_t i = 0; i < n_; i++) {
 		// wj = s / (| d_guide_j | + eps )^gamma
-		double	val = median / (fabs (d->data[i]) + eps);
-		adap_w_[i] = pow (val, gamma);
+		double	val = median / (fabs (d->data[i]) + c1 * sigma);
+		adap_w_[i] = pow (val, gamma0);
 	}
-#ifdef DEBUG
-	std::cout << "0: count = " << count << ", median = " << median << std::endl;
-#endif
+
 	delete [] absd;
 
 	// | D * beta |
@@ -210,18 +245,22 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double sigma, double gamma, const mm_real *g
 		if (absd[i] <= c2 * sigma) break;
 		count++;
 	}
-	if (count == 0) throw std::runtime_error ("No elements exceed the threshold (c2 * sigma). Cannot compute median.");
+	if (count == 0)
+		throw std::runtime_error ("No elements exceed the threshold (c2 * sigma). Cannot compute median.");
 	median = absd[count / 2];
-	if (median <= 0.) median = c2 * sigma;
+
+	double	gamma1 = std::log (contrast) / std::log (median / (c2 * sigma));
+	std::cout << "1: count = " << count << ", median = " << median << ", eps = "
+	<< c2 * sigma << ", gamma1 = " << gamma1 << std::endl;
+
+	// Adaptive weighting for |W * D * beta |
 #pragma omp parallel for
 	for (size_t i = n_; i < k_ * n_; i++) {
 		// wj = s / (| d_guide_j | + eps )^gamma
-		double	val = median / (fabs (d->data[i]) + eps);
-		adap_w_[i] = pow (val, gamma);
+		double	val = median / (fabs (d->data[i]) + c2 * sigma);
+		adap_w_[i] = pow (val, gamma1);
 	}
-#ifdef DEBUG
-	std::cout << "1: count = " << count << ", median = " << median << std::endl;
-#endif
+
 	delete [] absd;
 
 	mm_real_free (d);

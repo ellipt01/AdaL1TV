@@ -17,10 +17,24 @@
 int
 main (int argc, char **argv)
 {
-	AdaL1TV	inv (argv[0]);
+	CLI::App		app;
+	AdaL1TVOpts	opts;
+	opts.addTo (app);
 
 	try {
-		inv.initializeFromArgs (argc, argv);
+		app.parse (argc, argv);
+		opts.finalize ();
+	} catch (const CLI::ParseError &e) {
+		return app.exit (e);
+	} catch (const std::exception &e) {
+		std::fprintf (stderr, "Error: %s\n", e.what ());
+		return EXIT_FAILURE;
+	}
+
+
+	AdaL1TV	inv (opts);
+
+	try {
 #ifdef ENABLE_TIMING
 		double	start = omp_get_wtime ();
 #endif
@@ -31,8 +45,7 @@ main (int argc, char **argv)
 		inv.exportResults ();
 	} catch (const std::exception &e) {
 		std::cerr << "ERROR: " << e.what () << std::endl;
-		inv.printUsage ();
-		exit (1);
+		return EXIT_FAILURE;
 	}
 
 	// export weighted model in mm_real format

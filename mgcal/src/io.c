@@ -217,8 +217,8 @@ static int
 read_one_line (char *buf, double *x, int cap)
 {
 	int		i;
-	char	*p;
-	char	*endptr;
+	char		*p;
+	char		*endptr;
 	if (!buf) return 0;
 	for (i = 0, p = strtok (buf, " \t"); p && i < cap; p = strtok (NULL, " \t")) {
 		double	v;
@@ -241,8 +241,8 @@ grid *
 fread_grid (FILE *stream)
 {
 	int		i, k;
-	char	*p;
-	grid	*g;
+	char		*p;
+	grid		*g;
 
 	g = (grid *) malloc (sizeof (grid));
 	if (!g) error_and_exit ("fread_grid", "failed to allocate grid.", __FILE__, __LINE__);
@@ -269,6 +269,11 @@ fread_grid (FILE *stream)
 	if (!p) error_and_exit ("fread_grid", "read pos1: entry is empty.", __FILE__, __LINE__);
 	if (sscanf (p, "%lf %lf %lf", &g->xrange[1], &g->yrange[1], &g->zrange[1]) != 3)
 		error_and_exit ("fread_grid", "cannot parse pos1.", __FILE__, __LINE__);
+
+	p = get_valid_line_body (stream);
+	if (!p) error_and_exit ("fread_grid", "read padding: entry is empty.", __FILE__, __LINE__);
+	if (sscanf (p, "%lf", &g->padding) != 1)
+		error_and_exit ("fread_grid", "cannot parse pos0.", __FILE__, __LINE__);
 
 	for (k = 0; k <= 5; k++) {
 		int		n = -1;
@@ -341,6 +346,14 @@ fwrite_grid (FILE *stream, const grid *g)
 
 	fprintf (stream, "# P1 = [X1, Y1, Z1] : North-East (right-top) position\n");
 	fprintf (stream, "%f %f %f\n\n", g->xrange[1], g->yrange[1], g->zrange[1]);
+
+	fprintf (stream,
+			"# PADDING: if >0, center of West/South edges -= pad/2, East/North edges += pad/2, Bottom -= pad/2\n");
+	fprintf (stream, "%f\n\n", g->padding);
+
+	fprintf (stream,
+		"# PADDING: if >0, center of West/South edges -= pad/2, East/North edges += pad/2, Bottom -= pad/2\n");
+	fprintf (stream, "%f\n\n", g->padding);
 
 	fprintf (stream, "# X\n");
 	fprintf_array (stream, n_oneline, g->nx, g->x, "%f");
