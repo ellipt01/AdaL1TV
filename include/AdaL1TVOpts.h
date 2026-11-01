@@ -76,7 +76,7 @@ public:
 	double		c1 = 0.1;
 	double		c2 = 0.1;
 	
-	double		contrast = 1.;
+	double		contrast = -1.;
 public:
 	AdaL1TVOpts () = default;
 

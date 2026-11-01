@@ -118,7 +118,8 @@ AdaL1TVOpts::addTo (CLI::App &app)
 		->delimiter ('/')
 		->expected (3)
 		->capture_default_str ();
-	app.add_option ("-c,--contrast", contrast, "Contrast ratio between zero and non-zero grid cells")
+	app.add_option ("-c,--contrast", contrast, "Contrast ratio between zero and non-zero grid cells\n"
+		"If <= 0 is specified, weight exponent gamma is set to 1.")
 		->capture_default_str ();
 }
 

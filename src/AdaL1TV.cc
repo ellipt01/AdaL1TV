@@ -56,6 +56,9 @@ AdaL1TV::start_ADMM (mm_real *f, mm_real *K)
 	a->setTVRegularization (opts_.mu, opts_.nx, opts_.ny, opts_.nz);
 	if (opts_.nu > 0.) a->setBoundConstraint (opts_.nu, opts_.lower, opts_.upper);
 
+	// Print settings to stderr
+	export_settings (stderr);
+
 	if (!aopts_.guidefn.empty ()) {
 		FILE *fp = fopen (aopts_.guidefn.c_str (), "r");
 		if (!fp)

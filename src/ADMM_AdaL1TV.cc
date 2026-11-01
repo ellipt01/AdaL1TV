@@ -221,7 +221,7 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double contrast, double sigma, const mm_real
 		throw std::runtime_error ("No elements exceed the threshold (c1 * sigma). Cannot compute median.");
 	double	median = absd[count / 2];
 
-	double	gamma0 = std::log (contrast) / std::log (median / (c1 * sigma));
+	double	gamma0 = (contrast > 0.) ? std::log (contrast) / std::log (median / (c1 * sigma)) : 1.;
 	std::cout << "0: count = " << count << ", median = " << median << ", eps = "
 	<< c1 * sigma << ", gamma0 = " << gamma0 << std::endl;
 
@@ -249,7 +249,7 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double contrast, double sigma, const mm_real
 		throw std::runtime_error ("No elements exceed the threshold (c2 * sigma). Cannot compute median.");
 	median = absd[count / 2];
 
-	double	gamma1 = std::log (contrast) / std::log (median / (c2 * sigma));
+	double	gamma1 = (contrast > 0) ? std::log (contrast) / std::log (median / (c2 * sigma)) : 1.;
 	std::cout << "1: count = " << count << ", median = " << median << ", eps = "
 	<< c2 * sigma << ", gamma1 = " << gamma1 << std::endl;
 
