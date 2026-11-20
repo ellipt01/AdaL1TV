@@ -119,6 +119,9 @@ L1L2::start_ADMM (mm_real* f, mm_real* K)
 	admm_->setL1L2Regularization (opts_.mu);
 	if (opts_.nu > 0.) admm_->setBoundConstraint (opts_.nu, opts_.lower, opts_.upper);
 
+	// Print settings to stderr
+	export_settings (stderr);
+
 	size_t niter = admm_->solve (opts_.maxiter, opts_.tolerance);
 	fprintf (stderr, "residual[%04zu] = %.4e / %.4e\n", niter, admm_->getResiduals (), opts_.tolerance);
 }

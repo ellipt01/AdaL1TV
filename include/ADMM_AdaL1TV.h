@@ -56,6 +56,9 @@ public:
 	// Set TV regularization parameters and differential operators
 	void		setTVRegularization (double mu, size_t nx, size_t ny, size_t nz);
 
+	// Apply initial model
+	void		applyInitialModel (const mm_real *beta);
+
 	// Run ADMM iterations until convergence
 	size_t	solve (size_t maxiter, double tol);
 

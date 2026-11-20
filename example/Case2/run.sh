@@ -22,7 +22,10 @@ for log_lambda in $(seq "${schedule[@]}"); do
 	printf -v idx "%03d" "$k"
 
 	if [ ! -e model_L1TV_"$idx".data ]; then
-		"$root"/bin/l1tvinv -f input_mag.in -l "$log_lambda" -s settings.par -v 2>&1 | tee -a "$log_fn"
+		"$root"/bin/l1tvinv -f input_mag.in -l "$log_lambda"\
+			-n 50/50/25 -r -2.5/2.5/-2.5/2.5/0./2.5\
+			-d 45./-7./45./-7. -b 1./0.0/100. -i 1.0e-4/100000\
+			-v 2>&1 | tee -a "$log_fn"
 
 		mv -f model.data model_L1TV_"$idx".data
 		mv -f recovered.data recovered_L1TV_"$idx".data
@@ -51,7 +54,10 @@ for log_lambda in $(seq "${schedule[@]}"); do
 	printf -v idx "%03d" "$k"
 
 	if [ ! -e model_L1L2_"$idx".data ]; then
-		"$root"/bin/l1l2inv -f input_mag.in -l "$log_lambda" -a "$alpha" -s settings.par -v 2>&1 | tee -a "$log_fn"
+		"$root"/bin/l1l2inv -f input_mag.in -l "$log_lambda" -a "$alpha"\
+			-n 50/50/25 -r -2.5/2.5/-2.5/2.5/0./2.5\
+			-d 45./-7./45./-7. -b 1./0.0/100. -i 1.0e-4/100000\
+			-v 2>&1 | tee -a "$log_fn"
 
 		mv -f model.data model_L1L2_"$idx".data
 		mv -f recovered.data recovered_L1L2_"$idx".data
@@ -82,7 +88,10 @@ for log_lambda in $(seq "${schedule[@]}"); do
 
 	if [ ! -e model_AdaL1TV_"$idx".data ]; then
 		"$root"/bin/l1tvinv -f input_mag.in -l "$log_lambda"\
-			-g beta_L1L2_opt.vec:"$sigma":0.1:0.1 -c 0.333 -s settings.par -v 2>&1 | tee -a "$log_fn"
+			-n 50/50/25 -r -2.5/2.5/-2.5/2.5/0./2.5\
+			-d 45./-7./45./-7. -b 1./0.0/100. -i 1.0e-4/100000\
+			-g beta_L1L2_opt.vec -s "$sigma"/0.1/0.1 -c 1.2\
+			-v 2>&1 | tee -a "$log_fn"
 
 		mv -f model.data model_AdaL1TV_"$idx".data
 		mv -f recovered.data recovered_AdaL1TV_"$idx".data

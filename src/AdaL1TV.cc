@@ -56,9 +56,6 @@ AdaL1TV::start_ADMM (mm_real *f, mm_real *K)
 	a->setTVRegularization (opts_.mu, opts_.nx, opts_.ny, opts_.nz);
 	if (opts_.nu > 0.) a->setBoundConstraint (opts_.nu, opts_.lower, opts_.upper);
 
-	// Print settings to stderr
-	export_settings (stderr);
-
 	if (!aopts_.guidefn.empty ()) {
 		FILE *fp = fopen (aopts_.guidefn.c_str (), "r");
 		if (!fp)
@@ -70,6 +67,9 @@ AdaL1TV::start_ADMM (mm_real *f, mm_real *K)
 		a->setAdaptiveWeighting (aopts_.contrast, aopts_.sigma, guide_model, aopts_.c1, aopts_.c2);
 		mm_real_free (guide_model);
 	}
+
+	// Print settings to stderr
+	export_settings (stderr);
 
 	size_t niter = a->solve (opts_.maxiter, opts_.tolerance);
 	fprintf (stderr, "residual[%04zu] = %.4e / %.4e\n", niter, a->getResiduals (), opts_.tolerance);
@@ -84,7 +84,7 @@ AdaL1TV::export_settings (FILE *stream)
 	fprintf (stream, "#################################################################\n");
 	fprintf (stream, "# *** penalty type: %s ***\n", adaptive ? "AdaL1TV" : "L1TV");
 	fprintf (stream, "# \n");
-	fprintf (stream, "# num of grid cells:nx, ny, nz: %d, %d, %d\n", opts_.nx, opts_.ny, opts_.nz);
+	fprintf (stream, "# num of grid cells:nx, ny, nz: %d, %d, %d\n", opts_.ny, opts_.nx, opts_.nz);
 	fprintf (stream, "# range of the model space:\n");
 	fprintf (stream, "#    x range (south-north):     [%.2f, %.2f]\n", opts_.yy[0], opts_.yy[1]);
 	fprintf (stream, "#    y range (west-east):       [%.2f, %.2f]\n", opts_.xx[0], opts_.xx[1]);

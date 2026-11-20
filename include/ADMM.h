@@ -86,6 +86,9 @@ public:
 	// Enable bound constraints with penalty parameter ν and given limits
 	void		setBoundConstraint (double nu, double lower, double upper);
 
+	// Apply initial model
+	virtual void applyInitialModel (const mm_real *beta);
+
 	// Solve inverse problem via ADMM iterations:
 	//   Iterate until maxiter or until primal/dual residuals < tol
 	size_t	solve (size_t maxiter, double tol);

@@ -14,7 +14,6 @@
 #include "ADMM_AdaL1TV.h"
 
 /****** public ******/
-
 // Destructor: release allocated memory and resources
 ADMM_AdaL1TV::~ADMM_AdaL1TV ()
 {
@@ -136,6 +135,21 @@ ADMM_AdaL1TV::setTVRegularization (double mu, size_t nx, size_t ny, size_t nz)
 	// Lagrange multiplier u
 	if (u_) mm_real_free (u_);
 	u_ = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, k_ * n_, 1, k_ * n_);
+	mm_real_set_all (u_, 0.);
+}
+
+void
+ADMM_AdaL1TV::applyInitialModel (const mm_real *beta)
+{
+	if (s_ == nullptr || u_ == nullptr)
+		throw std::runtime_error ("call setTVRegularization() before.");
+
+	ADMM::applyInitialModel (beta); // beta_, beta_prev_, t_, v_
+
+	// s = D * beta, u = 0
+	mm_real	*d = D_dot_y (beta_);
+	mm_real_memcpy (s_, d);
+	mm_real_free (d);
 	mm_real_set_all (u_, 0.);
 }
 

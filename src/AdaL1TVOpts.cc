@@ -65,9 +65,9 @@ CommonOpts::finalize ()
 	// Model space range
 	xx = {range_[0], range_[1]};
 	yy = {range_[2], range_[3]};
-	zz = {range_[4], range_[5]};
-	if (xx[0] >= xx[1] || yy[0] >= yy[1] || zz[0] >= zz[1])
+	if (xx[0] >= xx[1] || yy[0] >= yy[1] || range_[4] >= range_[5])
 		throw std::runtime_error ("Invalid range: must satisfy west < east, south < north, and top < bottom.");
+	zz = {- range_[4], - range_[5]};
 
 	// Directions of the external field and the magnetization
 	exf_inc = incdec_[0];

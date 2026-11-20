@@ -43,7 +43,8 @@ ADMM::~ADMM ()
 }
 
 // Setup the linear system f = X * beta
-void ADMM::setupLinearSystem (mm_real *f, mm_real *X, bool do_normalize)
+void
+ADMM::setupLinearSystem (mm_real *f, mm_real *X, bool do_normalize)
 {
 	if (f->m != X->m) throw std::runtime_error ("matrix and vector size do not match.");
 	if (f->m != m_)   throw std::runtime_error ("size of data vector f is incompatible.");
@@ -68,7 +69,8 @@ void ADMM::setupLinearSystem (mm_real *f, mm_real *X, bool do_normalize)
 }
 
 // Set L1-L2 regularization (elastic net style)
-void ADMM::setL1L2Regularization (double mu)
+void
+ADMM::setL1L2Regularization (double mu)
 {
 	if (mu <= std::numeric_limits<double>::epsilon ()) throw std::runtime_error ("specified mu is invalid.");
 
@@ -86,7 +88,8 @@ void ADMM::setL1L2Regularization (double mu)
 }
 
 // Set bound constraints (box constraints)
-void ADMM::setBoundConstraint (double nu, double lower, double upper)
+void
+ADMM::setBoundConstraint (double nu, double lower, double upper)
 {
 	if (upper <= lower) throw std::runtime_error ("lower and/or upper bounds are invalid.");
 
@@ -119,8 +122,31 @@ void ADMM::setBoundConstraint (double nu, double lower, double upper)
 	mm_real_set_all (v_, 0.);
 }
 
+// Apply initial model
+void
+ADMM::applyInitialModel (const mm_real *beta)
+{
+	if (!beta_) beta_ = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, n_, 1, n_);
+	if (beta->m != n_ || beta->n != 1)
+		throw std::runtime_error ("Size of specified initial model invalid.");
+	mm_real_memcpy (beta_, beta);
+
+	if (!beta_prev_) beta_prev_ = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, n_, 1, n_);
+	mm_real_memcpy (beta_prev_, beta);
+
+	// t = clip(beta, lower, upper), v = 0
+	if (nu_ > std::numeric_limits<double>::epsilon ()) {
+		if (t_ == nullptr || v_ == nullptr)
+			throw std::runtime_error ("call setBoundConstraint() before.");
+		for (size_t j = 0; j < n_; j++)
+			t_->data[j] = std::min (std::max (beta_->data[j], lower_->data[j]), upper_->data[j]);
+		mm_real_set_all (v_, 0.);
+	}
+}
+
 // Run ADMM iterations until convergence
-size_t ADMM::solve (size_t maxiter, double tol)
+size_t
+ADMM::solve (size_t maxiter, double tol)
 {
 	if (m_ <= 0 || n_ == 0)
 		throw std::runtime_error ("size of the problem has not yet been specified or it is invalid.");
@@ -149,7 +175,8 @@ size_t ADMM::solve (size_t maxiter, double tol)
 }
 
 // Return the estimated model
-mm_real *ADMM::getModel (bool remove_weight)
+mm_real *
+ADMM::getModel (bool remove_weight)
 {
 	mm_real *beta = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, n_, 1, n_);
 	mm_real_memcpy (beta, beta_);
@@ -160,7 +187,8 @@ mm_real *ADMM::getModel (bool remove_weight)
 }
 
 // Recover predicted data f = X * beta
-mm_real *ADMM::recover ()
+mm_real *
+ADMM::recover ()
 {
 	mm_real *f = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, m_, 1, m_);
 	mm_real_x_dot_yk (false, 1., X_, beta_, 0, 0., f);
@@ -170,7 +198,8 @@ mm_real *ADMM::recover ()
 /****** protected ******/
 
 // One ADMM iteration step
-void ADMM::iterate ()
+void
+ADMM::iterate ()
 {
 	update_rhs ();
 	update_beta ();
@@ -183,7 +212,8 @@ void ADMM::iterate ()
 }
 
 // Update right-hand side vector b
-void ADMM::update_rhs ()
+void
+ADMM::update_rhs ()
 {
 	// b = c + mu * (s + u) + nu * (t + v), where c = X.T * f
 	if (b_ == nullptr) b_ = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, n_, 1, n_);
@@ -208,14 +238,16 @@ void ADMM::update_rhs ()
 }
 
 // Update primal variable beta
-void ADMM::update_beta ()
+void
+ADMM::update_beta ()
 {
 	if (beta_) mm_real_memcpy (beta_prev_, beta_);
 	solve_with_SMW (mu_ + nu_, b_, beta_);
 }
 
 // Update slack variable s
-void ADMM::update_slack_s ()
+void
+ADMM::update_slack_s ()
 {
 	double ck = mu_ / (mu_ + (1. - alpha_) * lambda_);
 
@@ -228,14 +260,16 @@ void ADMM::update_slack_s ()
 }
 
 // Update dual variable u
-void ADMM::update_dual_u ()
+void
+ADMM::update_dual_u ()
 {
 	for (size_t j = 0; j < n_; j++)
 		u_->data[j] += s_->data[j] - beta_->data[j];
 }
 
 // Update slack variable t
-void ADMM::update_slack_t ()
+void
+ADMM::update_slack_t ()
 {
 #pragma omp parallel for
 	for (size_t j = 0; j < n_; j++) {
@@ -246,7 +280,8 @@ void ADMM::update_slack_t ()
 }
 
 // Update dual variable v
-void ADMM::update_dual_v ()
+void
+ADMM::update_dual_v ()
 {
 	for (size_t j = 0; j < n_; j++) {
 		v_->data[j] += t_->data[j] - beta_->data[j];
@@ -254,7 +289,8 @@ void ADMM::update_dual_v ()
 }
 
 // Factorize matrix C = (X * X.T / coef + I)^-1
-void ADMM::factorize_C ()
+void
+ADMM::factorize_C ()
 {
 	if (Ci_ == nullptr) Ci_ = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, m_, m_, m_ * m_);
 
@@ -266,7 +302,8 @@ void ADMM::factorize_C ()
 }
 
 // Evaluate primal and dual residuals
-double ADMM::eval_residuals ()
+double
+ADMM::eval_residuals ()
 {
 	double d1 = 0., d2 = 0., d3 = 0.;
 
@@ -292,7 +329,8 @@ double ADMM::eval_residuals ()
 }
 
 // Factorize a real-symmetry matrix using Cholesky
-void ADMM::factorize_matrix (mm_real *C)
+void
+ADMM::factorize_matrix (mm_real *C)
 {
 	if (!mm_real_is_symmetric (C)) mm_real_general_to_symmetric ('U', C);
 	cholfact_ (C);
@@ -301,7 +339,8 @@ void ADMM::factorize_matrix (mm_real *C)
 /****** private ******/
 
 // Normalize columns of matrix X
-mm_real *ADMM::normalize_matrix (mm_real *X)
+mm_real *
+ADMM::normalize_matrix (mm_real *X)
 {
 	mm_real *w = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, X->n, 1, X->n);
 	for (size_t j = 0; j < X->n; j++) {
@@ -322,7 +361,8 @@ mm_real *ADMM::normalize_matrix (mm_real *X)
 }
 
 // Soft-thresholding operator
-double ADMM::soft_threshold (double gamma, double lambda)
+double
+ADMM::soft_threshold (double gamma, double lambda)
 {
 	double sign = (gamma >= 0.) ? 1. : -1.;
 	double ci = fabs (gamma) - lambda;
@@ -345,7 +385,8 @@ ADMM::cholsolve (mm_real *Ci, mm_real *b)
 }
 
 // Solve with Sherman–Morrison–Woodbury formula
-void ADMM::solve_with_SMW (double coef, mm_real *b, mm_real *x)
+void
+ADMM::solve_with_SMW (double coef, mm_real *b, mm_real *x)
 {
 	if (x == nullptr) throw std::runtime_error ("ERROR: vector x is empty.");
 	if (x->m != n_) throw std::runtime_error ("ERROR: Dimension of vector x incompatible.");
@@ -367,7 +408,8 @@ void ADMM::solve_with_SMW (double coef, mm_real *b, mm_real *x)
 }
 
 // Factorize matrix using Cholesky decomposition
-void ADMM::cholfact_ (mm_real *C)
+void
+ADMM::cholfact_ (mm_real *C)
 {
 	MKL_INT	info;
 	char		uplo = (C->symm == MM_REAL_SYMMETRIC_UPPER) ? 'U' : 'L';
