@@ -11,23 +11,29 @@ CommonOpts::addTo (CLI::App &app)
 {
 
 	app.add_option ("-f,--infile", infn, "Input magnetic anomaly data file")
+		->type_name ("FILE")
 		->required ();
+
 	app.add_option ("-l,--lambda", log10_lambda, "Regularization parameter: log10(lambda)")
 		->required ();
+
 	app.add_option ("-n,--numgrd", numgrd_, "Number of grid cells: nx/ny/nz")
 		->delimiter ('/')
 		->expected (3)
 		->required ();
+
 	app.add_option ("-r,--range", range_, "Model space range: west/east/south/north/top/bottom (km)")
 		->delimiter ('/')
 		->expected (6)
 		->required ();
+
 	app.add_option ("-d,--direction", incdec_,
 		"Inclination and declination of external field and magnetization:\n"
 		"exf_inc/exf_dec/mgz_inc/mgz_dec")
 		->delimiter ('/')
 		->expected (4)
 		->required ();
+
 	app.add_option ("-p,--penalty", mu, "Penalty parameter: mu")
 		->capture_default_str ();
 
@@ -40,11 +46,14 @@ CommonOpts::addTo (CLI::App &app)
 		->default_str (os.str ());
 	os.str ("");
 	os.clear ();
+
 	os << tolerance << "/" << maxiter;
 	app.add_option ("-i,--iteration", iter_, "Tolerance and maximum number of iterations: tol/maxiter")
 		->delimiter ('/')
 		->default_str (os.str ());
-	app.add_option ("-t,--terrain", terrainfn, "Terrain file");
+
+	app.add_option ("-t,--terrain", terrainfn, "Terrain file")
+		->type_name ("FILE");
 
 	app.add_flag ("-v,--verbose", verbose, "Enable verbose output")
 		->default_str ("false");
@@ -111,15 +120,23 @@ AdaL1TVOpts::addTo (CLI::App &app)
 
 	app.add_option ("-g,--guide", guidefn,
 		"Guide model file name.\n"
-		"If not specified, the -s option is ignored and plain L1TV is performed.");
+		"If not specified, the -s and -c options are ignored and plain L1TV is performed.")
+		->type_name ("FILE");
+
+	std::ostringstream	os;
+	os << sigma << "/" << c1 << "/" << c2;
 	app.add_option ("-s,--sigma", sigmas_,
 		"Thresholds for non-zero elements (c1*sigma, c2*sigma): sigma/c1/c2.\n"
 		"Used only when -g is specified.")
 		->delimiter ('/')
 		->expected (3)
-		->capture_default_str ();
+		->default_str (os.str ());
+	os.str ("");
+	os.clear ();
+
 	app.add_option ("-c,--contrast", contrast, "Contrast ratio between zero and non-zero grid cells\n"
-		"If <= 0 is specified, weight exponent gamma is set to 1.")
+		"If <= 0 is specified, weight exponent gamma is set to 1.\n"
+		"Used only when -g is specified.")
 		->capture_default_str ();
 }
 
