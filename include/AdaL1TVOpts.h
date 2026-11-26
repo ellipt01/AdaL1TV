@@ -25,8 +25,6 @@ public:
 	double		mgz_inc = 0.;
 	double		mgz_dec = 0.;
 
-	double		log10_lambda = 0.;
-
 	double		mu = 1.;
 	double		nu = -1.;
 	double		upper = 0.;
@@ -58,7 +56,10 @@ public:
 class L1L2Opts : public CommonOpts {
 
 public:
-	double	alpha = 0.9;
+	double	lambda1;
+	double	lambda2;
+	double	alpha = -1.;
+	std::vector <double>	log10_lambdas_;
 
 public:
 	L1L2Opts () = default;
@@ -71,6 +72,8 @@ public:
 class AdaL1TVOpts : public CommonOpts {
 
 public:
+	double		log10_lambda;
+	double		lambda;
 	std::string	guidefn;
 	double		sigma = 1.;
 	double		c1 = 0.1;

@@ -30,15 +30,14 @@ ADMM_AdaL1TV::~ADMM_AdaL1TV ()
 }
 
 // Constructor: initialize problem size and regularization parameter
-ADMM_AdaL1TV::ADMM_AdaL1TV (size_t m, size_t n, double log10_lambda)
+ADMM_AdaL1TV::ADMM_AdaL1TV (size_t m, size_t n, double lambda)
 {
 	if (m <= 0 || n <= 0) throw std::runtime_error ("Invalid system size: both m and n must be positive.");
 
 	m_ = m;
 	n_ = n;
-	
-	// lambda = 10^(log10_lambda)
-	lambda_ = pow (10., log10_lambda);
+
+	lambda_ = lambda;
 }
 
 // Set up total variation (TV) regularization matrices

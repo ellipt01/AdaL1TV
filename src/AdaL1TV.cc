@@ -47,7 +47,7 @@ AdaL1TV::start_ADMM (mm_real *f, mm_real *K)
 	size_t m = f->m;
 	size_t n = K->n;
 
-	ADMM_AdaL1TV	*a = new ADMM_AdaL1TV (m, n, opts_.log10_lambda);
+	ADMM_AdaL1TV	*a = new ADMM_AdaL1TV (m, n, aopts_.lambda);
 	admm_ = a;		// 基底の ADMM * に格納(delete は基底のデストラクタ)
 
 	if (opts_.verbose) a->setVerbose ();
@@ -99,7 +99,7 @@ AdaL1TV::export_settings (FILE *stream)
 	}
 	fprintf (stream, "# \n");
 	fprintf (stream, "# input anomaly data file name: %s\n", opts_.infn.c_str ());
-	fprintf (stream, "# log10(lambda):                %.4f\n", opts_.log10_lambda);
+	fprintf (stream, "# log10(lambda):                %.4f\n", aopts_.log10_lambda);
 	fprintf (stream, "# apply adaptive weighting:     %s\n", adaptive ? "true" : "false");
 	if (adaptive) {
 		fprintf (stream, "# guide model file name:        %s\n", aopts_.guidefn.c_str ());

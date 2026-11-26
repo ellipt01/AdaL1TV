@@ -24,12 +24,13 @@
 */
 
 class ADMM {
+
+	double	lambda1_ = 0.; // regularization parameter for L1 norm penalty
+	double	lambda2_ = 0.; // regularization parameter for L2 norm penalty
+
 protected:
 	size_t	m_ = 0; // number of data points (dim(f))
 	size_t	n_ = 0; // number of model parameters (dim(beta))
-
-	double	alpha_ = 0.;  // mixing ratio between data misfit and regularization
-	double	lambda_ = 0.; // regularization weight (λ)
 
 	// f and X are not owned by ADMM. Caller must manage lifetime.
 	mm_real	*f_ = nullptr; // observed data vector f (dim m)
@@ -75,7 +76,7 @@ public:
 	ADMM (const ADMM&) = delete;
 	ADMM& operator = (const ADMM&) = delete;
 
-	ADMM (size_t m, size_t n, double alpha, double log10_lambda);
+	ADMM (size_t m, size_t n, double lambda1, double lambda2);
 
 	// Setup linear system: normalize matrix if requested
 	void		setupLinearSystem (mm_real *f, mm_real *X, bool do_normalize);

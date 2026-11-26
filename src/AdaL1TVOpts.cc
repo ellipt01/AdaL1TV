@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <cmath>
 #include <vector>
 #include <stdexcept>
 #include "CLI11.hpp"
@@ -9,12 +10,8 @@
 void
 CommonOpts::addTo (CLI::App &app)
 {
-
 	app.add_option ("-f,--infile", infn, "Input magnetic anomaly data file")
 		->type_name ("FILE")
-		->required ();
-
-	app.add_option ("-l,--lambda", log10_lambda, "Regularization parameter: log10(lambda)")
 		->required ();
 
 	app.add_option ("-n,--numgrd", numgrd_, "Number of grid cells: nx/ny/nz")
@@ -101,8 +98,16 @@ L1L2Opts::addTo (CLI::App &app)
 {
 	CommonOpts::addTo (app);
 
-	app.add_option ("-a,--alpha", alpha, "Mixing ratio of L1 and L2 penalties")
-		->capture_default_str ();
+	app.add_option ("-l,--loglambda", log10_lambdas_,
+		"log10(lambda) [ with -a: lambda1=a*10^loglambda, lambda2=(1-a)*10^loglambda],\n"
+		"or log10(lambda1)/log10(lambda2)")
+		->delimiter ('/')
+		->expected(1, 2)
+		->required ();
+
+	app.add_option ("-a,--alpha", alpha, "Mixing ratio of L1 and L2 penalties\n"
+		"0 <= alpha <= 1 (only with a single -l)")
+		->check(CLI::Range(0., 1.));
 }
 
 // Validate and finalize the common values (no L1L2-specific processing is needed yet).
@@ -110,6 +115,18 @@ void
 L1L2Opts::finalize ()
 {
 	CommonOpts::finalize ();
+
+	if (log10_lambdas_.size () == 1) {
+		if (alpha < 0.) throw std::runtime_error ("-a is required when -l has a single value");
+		double	lambda = std::pow (10., log10_lambdas_[0]);
+		lambda1 = alpha * lambda;
+		lambda2 = (1. - alpha) * lambda;
+	} else {
+		if (alpha >= 0.)      // -a was given (alpha is initialised to -1)
+			throw std::runtime_error ("-a cannot be used with -l log10(lambda1)/log10(lambda2).");
+		lambda1 = std::pow (10., log10_lambdas_[0]);
+		lambda2 = std::pow (10., log10_lambdas_[1]);
+	}
 }
 
 // Register the common options plus the AdaL1TV-specific options (guide model, sigma, contrast).
@@ -117,6 +134,10 @@ void
 AdaL1TVOpts::addTo (CLI::App &app)
 {
 	CommonOpts::addTo (app);
+
+	app.add_option ("-l,--loglambda", log10_lambda, "Regularization parameter: log10(lambda)")
+		->delimiter ('/')
+		->required ();
 
 	app.add_option ("-g,--guide", guidefn,
 		"Guide model file name.\n"
@@ -145,6 +166,7 @@ void
 AdaL1TVOpts::finalize ()
 {
 	CommonOpts::finalize ();
+	lambda = std::pow (10., log10_lambda);
 	sigma = sigmas_[0];
 	c1 = sigmas_[1];
 	c2 = sigmas_[2];

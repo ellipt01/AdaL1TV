@@ -16,6 +16,8 @@ class ADMM_AdaL1TV : public ADMM {
 
 	size_t		k_ = 4; // dim(D) = k * n × n  (identity + Dx + Dy + Dz)
 
+	double		lambda_ = 0.; // regularization parameter for L1 norm penalty
+
 	// Adaptive weights for differential operators (length = n)
 	double		*adap_w_ = nullptr;
 
@@ -44,7 +46,7 @@ class ADMM_AdaL1TV : public ADMM {
 	DiffOp		*diff_ = nullptr;
 
 public:
-	ADMM_AdaL1TV (size_t m, size_t n, double log10_lambda);
+	ADMM_AdaL1TV (size_t m, size_t n, double lambda);
 	~ADMM_AdaL1TV ();
 
 	// Set adaptive weighting parameter contrast and initial model

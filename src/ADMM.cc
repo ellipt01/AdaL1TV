@@ -11,7 +11,7 @@
 /****** public ******/
 
 // Constructor
-ADMM::ADMM (size_t m, size_t n, double alpha, double log10_lambda)
+ADMM::ADMM (size_t m, size_t n, double lambda1, double lambda2)
 {
 	if (m <= 0 || n <= 0) 
 		throw std::runtime_error ("specified size of the equation is invalid.");
@@ -19,8 +19,8 @@ ADMM::ADMM (size_t m, size_t n, double alpha, double log10_lambda)
 	m_ = m;
 	n_ = n;
 	
-	alpha_  = alpha;
-	lambda_ = pow (10., log10_lambda);
+	lambda1_ = lambda1;
+	lambda2_ = lambda2;
 }
 
 // Destructor: free all allocated memory
@@ -249,12 +249,12 @@ ADMM::update_beta ()
 void
 ADMM::update_slack_s ()
 {
-	double ck = mu_ / (mu_ + (1. - alpha_) * lambda_);
+	double ck = mu_ / (mu_ + lambda2_);
 
 #pragma omp parallel for
 	for (size_t j = 0; j < n_; j++) {
 		double rj = beta_->data[j] - u_->data[j];
-		double cj = soft_threshold (rj, alpha_ * lambda_ / mu_);
+		double cj = soft_threshold (rj, lambda1_ / mu_);
 		s_->data[j] = ck * cj; 
 	}
 }

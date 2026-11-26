@@ -111,7 +111,7 @@ L1L2::start_ADMM (mm_real* f, mm_real* K)
 	size_t n = K->n;
 
 	const L1L2Opts	&lo = static_cast<const L1L2Opts &> (opts_);
-	admm_ = new ADMM (m, n, lo.alpha, opts_.log10_lambda);
+	admm_ = new ADMM (m, n, lo.lambda1, lo.lambda2);
 
 	if (opts_.verbose) admm_->setVerbose ();
 
@@ -149,8 +149,13 @@ L1L2::export_settings (FILE* stream)
 	fprintf (stream, "# \n");
 	fprintf (stream, "# input anomaly data file name: %s\n", opts_.infn.c_str ());
 	const L1L2Opts &lo = static_cast<const L1L2Opts &> (opts_);
-	fprintf (stream, "# alpha:                        %.4f\n", lo.alpha);
-	fprintf (stream, "# log10(lambda):                %.4f\n", opts_.log10_lambda);
+	if (lo.log10_lambdas_.size () == 1) {
+		fprintf (stream, "# alpha:                        %.4f\n", lo.alpha);
+		fprintf (stream, "# log10(lambda):                %.4f\n", lo.log10_lambdas_[0]);
+	} else {
+		fprintf (stream, "# log10(lambda1):                %.4f\n", lo.log10_lambdas_[0]);
+		fprintf (stream, "# log10(lambda2):                %.4f\n", lo.log10_lambdas_[1]);
+	}
 	fprintf (stream, "# verbose mode:                 %s\n", (opts_.verbose) ? "true" : "false");
 	fprintf (stream, "#################################################################\n");
 }
