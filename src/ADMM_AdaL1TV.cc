@@ -281,6 +281,57 @@ ADMM_AdaL1TV::setAdaptiveWeighting (double contrast, double sigma, const mm_real
 	export_adaptive_weight_ ();
 }
 
+// Write the data misfit and the weighted penalties at the current beta_ :
+// lambda  log10_lambda  residual  PenGL  PenDGL  total
+//   lambda   = lambda_ (regularization parameter of this run),  log10_lambda = log10 (lambda)
+//   residual = 1/2 * || f - X * beta ||^2
+//   PenGL    = sum_i w_i * | beta_i |                       (block 0:    I * beta)
+//   PenDGL   = sum_i w_i * | (Dx, Dy, Dz) * beta |_i        (blocks 1..3: Ws * D * inv(W) * beta)
+//   total    = PenGL + PenDGL
+//
+// w is the adaptive weight (w = 1 if setAdaptiveWeighting () was not called, i.e. plain L1TV).
+void
+ADMM_AdaL1TV::exportObjective (FILE *stream)
+{
+	if (beta_ == nullptr || X_ == nullptr || f_ == nullptr)
+		throw std::runtime_error ("exportObjective: beta, X or f is not set. Call after solve().");
+
+	// residual = 1/2 * || f - X * beta ||^2
+	mm_real	*r = mm_real_new (MM_REAL_DENSE, MM_REAL_GENERAL, X_->m, 1, X_->m);
+	mm_real_x_dot_yk (false, 1., X_, beta_, 0, 0., r);
+	double	ss = 0.;
+	for (size_t i = 0; i < (size_t) X_->m; i++) {
+		const double	e = f_->data[i] - r->data[i];
+		ss += e * e;
+	}
+	mm_real_free (r);
+	double	residual = .5 * ss;
+
+	// d_ = D * beta_ is kept up to date by update_beta (), so it is valid after solve ().
+	// (if called before solve (), d_ is not available yet: compute it here and free it afterwards)
+	mm_real	*d = d_;
+	bool		own = (d == nullptr);
+	if (own) d = D_dot_y (beta_);
+
+	double	PenGL = 0.;
+	for (size_t j = 0; j < n_; j++)
+		PenGL += ((adap_w_) ? adap_w_[j] : 1.) * std::fabs (d->data[j]);
+
+	double	PenDGL = 0.;
+	for (size_t j = n_; j < k_ * n_; j++)
+		PenDGL += ((adap_w_) ? adap_w_[j] : 1.) * std::fabs (d->data[j]);
+
+	if (own) mm_real_free (d);
+
+	double	total = PenGL + PenDGL;
+
+	fprintf (stream, "# lambda  log10_lambda  residual  PenGL  PenDGL  Pentotal\n");
+	fprintf (stream, "%.8e %.8f %.8e %.8e %.8e %.8e\n",
+			lambda_, std::log10 (lambda_), residual, PenGL, PenDGL, total);
+}
+
+
+
 /****** protected/private ******/
 
 // Perform a single ADMM update cycle

@@ -38,6 +38,15 @@ AdaL1TV::exportResults (const char *ofn_model, const char *ofn_recovered)
 	}
 }
 
+// Export the evaluation of the objective function at the current model:
+// misfit and penalty
+void
+AdaL1TV::exportObjective (FILE *stream)
+{
+	ADMM_AdaL1TV	*a = static_cast<ADMM_AdaL1TV *> (admm_);
+	a->exportObjective (stream);
+}
+
 /****** protected ******/
 
 // Start ADMM iteration until convergence

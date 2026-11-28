@@ -43,6 +43,7 @@ main (int argc, char **argv)
 		std::cout << "TIME: " << omp_get_wtime () - start << std::endl;
 #endif
 		inv.exportResults ();
+		inv.exportObjective (stderr);
 	} catch (const std::exception &e) {
 		std::cerr << "ERROR: " << e.what () << std::endl;
 		return EXIT_FAILURE;

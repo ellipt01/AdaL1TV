@@ -23,12 +23,15 @@ public:
 	AdaL1TV &operator= (const AdaL1TV &) = delete;
 
 	// regularization.vec も出力する
-	void exportResults (const char *ofn_model, const char *ofn_recovered) override;
+	void		exportResults (const char *ofn_model, const char *ofn_recovered) override;
 	using L1L2::exportResults;        // 引数なし版を隠さない
 
+	// Export the evaluation of the objective function at the current model
+	void		exportObjective (FILE *stream);
+
 protected:
-	void start_ADMM (mm_real *f, mm_real *K) override;
-	void export_settings (FILE *stream) override;
+	void		start_ADMM (mm_real *f, mm_real *K) override;
+	void		export_settings (FILE *stream) override;
 };
 
 #endif // ADA_L1_TV_H_

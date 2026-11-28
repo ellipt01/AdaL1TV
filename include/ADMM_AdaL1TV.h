@@ -67,6 +67,10 @@ public:
 	// Return d = [I, Dx, Dy, Dz]^T * beta
 	mm_real	*getRegularizationVector () { return d_; }
 
+	// Export the evaluation of the objective function at the current model:
+	// misfit and penalty.
+	void		exportObjective (FILE *stream);
+
 protected:
 	// One ADMM iteration
 	void		iterate ();
